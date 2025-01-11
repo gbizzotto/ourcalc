@@ -2,23 +2,16 @@
 #pragma once
 
 #include <vector>
+#include <memory>
 #include <SDL2/SDL.h>
 
 
-struct _WindowHandler
-{
-	virtual void event_button_down() {}
-	virtual void event_button_up() {}
-};
-
-
-struct SDLWindow
+struct Window
 {
 	SDL_Surface* winSurface = NULL;
 	SDL_Window* sdl_window = NULL;
-	_WindowHandler * handler;
 	
-	SDLWindow()
+	Window()
 	{
 		// Create our window
 		sdl_window = SDL_CreateWindow( "Example", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 1280, 720, SDL_WINDOW_SHOWN );
@@ -40,16 +33,10 @@ struct SDLWindow
 		// Update the window display
 		SDL_UpdateWindowSurface( sdl_window );
 	}
-
-	~SDLWindow()
+	~Window()
 	{
 		// Destroy the window. This will also destroy the surface
 		SDL_DestroyWindow(sdl_window);
-	}
-
-	void set_handler(_WindowHandler & wh)
-	{
-		handler = &wh;
 	}
 
 	void fill(int r, int g, int b)
@@ -58,14 +45,16 @@ struct SDLWindow
 		SDL_FillRect( this->winSurface, NULL, SDL_MapRGB( this->winSurface->format, r,g,b ) );
 		SDL_UpdateWindowSurface( this->sdl_window );
 	}
+
+	virtual void event_button_down() {}
+	virtual void event_button_up() {}
 };
 
 struct SDL
 {
-	using Window = SDLWindow;
-	using WindowHandler = _WindowHandler;
+	using Window_t = Window;
 
-	std::vector<Window> windows;
+	std::vector<std::unique_ptr<Window_t>> windows;
 
 	SDL()
 	{
@@ -79,10 +68,11 @@ struct SDL
 		SDL_Quit();	
 	}
 
-	Window & make_window(WindowHandler & wh)
+	template<typename W>
+	Window_t & make_window()
 	{
-		windows.emplace_back();
-		return windows.back();
+		windows.emplace_back(std::make_unique<W>());
+		return *windows.back();
 	}
 
 	void loop()
@@ -99,8 +89,8 @@ struct SDL
 						SDL_Window* sdl_window = SDL_GetWindowFromID(((SDL_WindowEvent&)e).windowID);
 						if ( ! sdl_window)
 							break;
-						for(Window & window : windows)
-							if (window.sdl_window == sdl_window)
+						for(auto & window : windows)
+							if (window->sdl_window == sdl_window)
 							{
 								switch(((SDL_WindowEvent&)e).event)
 								{
@@ -120,10 +110,10 @@ struct SDL
 						SDL_Window* sdl_window = SDL_GetWindowFromID(((SDL_MouseButtonEvent&)e).windowID);
 						if ( ! sdl_window)
 							break;
-						for(Window & window : windows)
-							if (window.sdl_window == sdl_window)
+						for(auto & window : windows)
+							if (window->sdl_window == sdl_window)
 							{
-								window.handler->event_button_up();
+								window->event_button_up();
 								break;
 							}
 						break;
@@ -133,10 +123,10 @@ struct SDL
 						SDL_Window* sdl_window = SDL_GetWindowFromID(((SDL_MouseButtonEvent&)e).windowID);
 						if ( ! sdl_window)
 							break;
-						for(Window & window : windows)
-							if (window.sdl_window == sdl_window)
+						for(auto & window : windows)
+							if (window->sdl_window == sdl_window)
 							{
-								window.handler->event_button_down();
+								window->event_button_down();
 								break;
 							}
 						break;

@@ -5,27 +5,27 @@
 
 using WindowManager = OW::Manager<SDL>;
 
-struct bw_window : public OW::Window<SDL>
+struct bw_window : public WindowManager::Window_t
 {
 	virtual void event_button_down() override
 	{
-		underlying_window->fill(0,0,0);
+		fill(0,0,0);
 		
 	}
 	virtual void event_button_up() override
 	{
-		underlying_window->fill(255,255,255);
+		fill(255,255,255);
 	}
 };
 
 
 int main()
 {
-	OW::Manager<SDL> ow;
+	WindowManager wm;
 
-	auto w = ow.make_window<bw_window>();
+	auto & w = wm.make_window<bw_window>();
 
-	ow.loop();
+	wm.loop();
 
 	return 0;
 }
