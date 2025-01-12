@@ -4,15 +4,40 @@
 namespace OW
 {
 
+struct Rect
+{
+	int x,y,w,h;
+};
+
+struct Widget
+{
+	Rect rect;
+};
+
+struct Button : Widget
+{
+	Button(Rect r)
+		: Widget{r}
+	{}
+};
+
 template<typename WSW>
 struct Window : public WSW::Window_t
 {
+	std::vector<std::unique_ptr<Widget>> widgets;
+
+	template<typename WDG>
+	WDG & make_widget(Rect r)
+	{
+		widgets.emplace_back(std::make_unique<WDG>(r));
+		return (WDG&)*widgets.back();
+	}
 };
 
 template<typename WSW>
 struct Manager
 {
-	using Window_t = typename WSW::Window_t;
+	using Window_t = Window<WSW>;
 
 	WSW window_system_wrapper;
 

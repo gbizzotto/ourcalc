@@ -69,10 +69,10 @@ struct SDL
 	}
 
 	template<typename W>
-	Window_t & make_window()
+	W & make_window()
 	{
 		windows.emplace_back(std::make_unique<W>());
-		return *windows.back();
+		return (W&)*windows.back();
 	}
 
 	void loop()
