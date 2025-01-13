@@ -11,8 +11,9 @@ struct my_window : OurW::Window
 	OurW::Button & butt;
 
 	my_window()
-		: butt(make_widget<std::remove_reference<decltype(butt)>::type>({10,50,100,20}))
+		: butt(make_widget<std::remove_reference<decltype(butt)>::type>({10,50,200,40}))
 	{
+		butt.set_text("abcd");
 	}
 /*
 	virtual void event_redraw() override
