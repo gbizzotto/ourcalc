@@ -3,35 +3,41 @@
 #include "our_windows.hpp"
 
 
-using WindowManager = OW::Manager<SDL>;
+using OurW = OW<SDL>;
 
-struct bw_window : WindowManager::Window_t
+struct my_window : OurW::Window
 {
-	using Super = typename WindowManager::Window_t;
-	OW::Button & butt;
+	using Super = typename OurW::Window;
+	OurW::Button & butt;
 
-	bw_window()
+	my_window()
 		: butt(make_widget<std::remove_reference<decltype(butt)>::type>({10,50,100,20}))
 	{
 	}
-
-	virtual void event_button_down() override
+/*
+	virtual void event_redraw() override
 	{
-		fill(0,0,0);
-		
+		fill(255,255,255);	
+		Super::ok();
 	}
-	virtual void event_button_up() override
+
+	virtual void event_mouse_button_down() override
+	{
+		fill(0,0,0);		
+	}
+	virtual void event_mouse_button_up() override
 	{
 		fill(255,255,255);
 	}
+*/
 };
 
 
 int main()
 {
-	WindowManager wm;
+	OurW::Manager wm;
 
-	auto & w = wm.make_window<bw_window>();
+	auto & w = wm.make_window<my_window>();
 
 	wm.loop();
 

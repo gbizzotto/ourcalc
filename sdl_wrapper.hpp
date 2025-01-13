@@ -10,6 +10,7 @@ struct Window
 {
 	SDL_Surface* winSurface = NULL;
 	SDL_Window* sdl_window = NULL;
+	SDL_Renderer* renderer = NULL;
 	
 	Window()
 	{
@@ -17,37 +18,54 @@ struct Window
 		sdl_window = SDL_CreateWindow( "Example", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 1280, 720, SDL_WINDOW_SHOWN );
 
 		// Make sure creating the window succeeded
-		if ( !sdl_window )
+		if ( ! sdl_window)
 			throw;
 
 		// Get the surface from the window
 		winSurface = SDL_GetWindowSurface( sdl_window );
 
 		// Make sure getting the surface succeeded
-		if ( !winSurface )
+		if ( ! winSurface)
 			throw;
 
-		// Fill the window with a white rectangle
-		SDL_FillRect( winSurface, NULL, SDL_MapRGB( winSurface->format, 255, 255, 255 ) );
-
-		// Update the window display
-		SDL_UpdateWindowSurface( sdl_window );
+		renderer = SDL_CreateRenderer(sdl_window, -1, SDL_RENDERER_SOFTWARE);
+		if ( ! renderer)
+			throw;
 	}
 	~Window()
 	{
-		// Destroy the window. This will also destroy the surface
+		// This will also destroy the surface
 		SDL_DestroyWindow(sdl_window);
 	}
 
 	void fill(int r, int g, int b)
 	{
-		// Fill the window with a white rectangle
-		SDL_FillRect( this->winSurface, NULL, SDL_MapRGB( this->winSurface->format, r,g,b ) );
-		SDL_UpdateWindowSurface( this->sdl_window );
+	    SDL_SetRenderDrawColor(renderer, r, g, b, 255);
+	    SDL_RenderFillRect(renderer, nullptr);
+	    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+
+	    SDL_RenderPresent(renderer);
 	}
 
-	virtual void event_button_down() {}
-	virtual void event_button_up() {}
+	virtual void event_redraw() {}
+
+	virtual void event_mouse_button_down() {}
+	virtual void event_mouse_button_up() {}
+
+	void draw_rect(int x, int y, int w, int h, int r, int g, int b)
+	{
+	    SDL_Rect rect;
+	    rect.x = x;
+	    rect.y = y;
+	    rect.w = w;
+	    rect.h = h;
+
+	    SDL_SetRenderDrawColor(renderer, r, g, b, 255);
+	    SDL_RenderDrawRect(renderer, &rect);
+	    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+
+	    SDL_RenderPresent(renderer);
+	}
 };
 
 struct SDL
@@ -94,7 +112,9 @@ struct SDL
 							{
 								switch(((SDL_WindowEvent&)e).event)
 								{
-									case SDL_WINDOWEVENT_MINIMIZED:
+									//case SDL_WINDOWEVENT_SHOWN:
+									case SDL_WINDOWEVENT_EXPOSED:
+										window->event_redraw();
 										break;
 									case SDL_WINDOWEVENT_MOVED:
 										break;
@@ -113,7 +133,7 @@ struct SDL
 						for(auto & window : windows)
 							if (window->sdl_window == sdl_window)
 							{
-								window->event_button_up();
+								window->event_mouse_button_up();
 								break;
 							}
 						break;
@@ -126,7 +146,7 @@ struct SDL
 						for(auto & window : windows)
 							if (window->sdl_window == sdl_window)
 							{
-								window->event_button_down();
+								window->event_mouse_button_down();
 								break;
 							}
 						break;

@@ -1,56 +1,79 @@
 
 #pragma once
 
-namespace OW
-{
-
-struct Rect
-{
-	int x,y,w,h;
-};
-
-struct Widget
-{
-	Rect rect;
-};
-
-struct Button : Widget
-{
-	Button(Rect r)
-		: Widget{r}
-	{}
-};
-
 template<typename WSW>
-struct Window : public WSW::Window_t
+struct OW
 {
-	std::vector<std::unique_ptr<Widget>> widgets;
 
-	template<typename WDG>
-	WDG & make_widget(Rect r)
+	struct Window;
+
+	struct Rect
 	{
-		widgets.emplace_back(std::make_unique<WDG>(r));
-		return (WDG&)*widgets.back();
-	}
-};
+		int x,y,w,h;
+	};
 
-template<typename WSW>
-struct Manager
-{
-	using Window_t = Window<WSW>;
-
-	WSW window_system_wrapper;
-
-	template<typename W>
-	Window_t & make_window()
+	struct Widget
 	{
-		return window_system_wrapper.template make_window<W>();
-	}
+		Window & w;
+		Rect rect;
 
-	void loop()
+		Widget(Window & w, Rect r)
+			: w(w)
+			, rect(r)
+		{}
+
+		virtual void draw() {}
+	};
+
+	struct Button : Widget
 	{
-		window_system_wrapper.loop();
-	}
-};
+		Button(Window & w, Rect r)
+			: Widget{w, r}
+		{}
+		
+		virtual void draw() override
+		{
+			this->w.draw_rect(this->rect.x, this->rect.y, this->rect.w, this->rect.h, 128, 128, 128);
+		}
+	};
 
-} // namespace
+	struct Window : public WSW::Window_t
+	{
+		std::vector<std::unique_ptr<Widget>> widgets;
+
+		template<typename WDG>
+		WDG & make_widget(Rect r)
+		{
+			widgets.emplace_back(std::make_unique<WDG>(*this, r));
+			widgets.back()->draw();
+			return (WDG&)*widgets.back();
+		}
+
+		virtual void event_redraw()
+		{
+			this->fill(196,196,196);
+			for (auto & widget : widgets)
+				widget->draw();
+		}
+
+		virtual void event_mouse_button_down() {}
+		virtual void event_mouse_button_up() {}
+	};
+
+	struct Manager
+	{
+		WSW window_system_wrapper;
+
+		template<typename W>
+		Window & make_window()
+		{
+			return window_system_wrapper.template make_window<W>();
+		}
+
+		void loop()
+		{
+			window_system_wrapper.loop();
+		}
+	};
+
+}; // struct-namespace
