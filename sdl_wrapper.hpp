@@ -176,18 +176,23 @@ cleanup:
 struct Text
 {
 	Window * window;
-	SDL_Surface* message_surface;
-	SDL_Texture* message_texture;
+	SDL_Surface* message_surface = nullptr;
+	SDL_Texture* message_texture = nullptr;
 	int w, h;
+	std::string text;
 
 	Text(std::string s, Window * win)
 		: window(win)
+		, text(s)
 	{
 		//*
+		if ( ! text.size())
+			return;
+
 		// pre-render text
 		SDL_Color color = {64,64,64,0};
 
-		message_surface = TTF_RenderText_Solid(window->font, "asdffdsa", color);
+		message_surface = TTF_RenderText_Solid(window->font, s.c_str(), color);
 		message_texture = SDL_CreateTextureFromSurface(win->renderer, message_surface);
 		SDL_SetTextureBlendMode(message_texture, SDL_BLENDMODE_BLEND);
 
@@ -197,16 +202,29 @@ struct Text
 	}
 	~Text()
 	{
-		SDL_DestroyTexture(message_texture);
-		SDL_FreeSurface(message_surface);
+		if (message_texture)
+			SDL_DestroyTexture(message_texture);
+		if (message_surface)
+			SDL_FreeSurface(message_surface);
 	}
 	void render(int x, int y/*, int w, int h*/)
 	{
-		//*
-		// pre-render text
-		SDL_Color color = {255,0,0,0};
+		if ( ! text.size())
+			return;
 
-		message_surface = TTF_RenderText_Solid(window->font, "asdffdsa", color);
+		/*if (message_texture) {
+			SDL_DestroyTexture(message_texture);
+			message_texture = nullptr;
+		}
+		if (message_surface) {
+			SDL_FreeSurface(message_surface);
+			message_surface = nullptr;
+		}*/
+
+		//*
+		SDL_Color color = {64,64,64,0};
+
+		message_surface = TTF_RenderText_Solid(window->font, text.c_str(), color);
 		message_texture = SDL_CreateTextureFromSurface(window->renderer, message_surface);
 		SDL_SetTextureBlendMode(message_texture, SDL_BLENDMODE_BLEND);
 

@@ -17,8 +17,8 @@ struct OW
 		Window & w;
 		Rect rect;
 
-		Widget(Window & w, Rect r)
-			: w(w)
+		Widget(Window & win, Rect r)
+			: w(win)
 			, rect(r)
 		{}
 
@@ -35,12 +35,13 @@ struct OW
 
 		Button(Window & w, Rect r)
 			: Widget{w, r}
-			, text("aaaaaaaa", &this->w)
+			, text(" ", &this->w)
 		{}
 		
 		void set_text(std::string s)
 		{
 			text = Text(s, &this->w);
+			event_redraw();
 		}
 
 		virtual void event_redraw() override
@@ -48,22 +49,24 @@ struct OW
 			int color_bg = 192;
 			int color_light = 220;
 			int color_dark  = 64;
-			int offset = -1;
+			int offset = 0;
 			if (pressed)
 			{
 				std::swap(color_light, color_dark);
-				offset = 0;
+				offset = 1;
 			}
+
+			// Background
 			this->w.fill_rect(this->rect.x, this->rect.y, this->rect.w, this->rect.h, color_bg, color_bg, color_bg);
-			//this->w.draw_rect(this->rect.x, this->rect.y, this->rect.w, this->rect.h, color_bd, color_bd, color_bd);
+			// Border
 			this->w.draw_line(this->rect.x             , this->rect.y             , this->rect.x             , this->rect.y+this->rect.h, color_light, color_light, color_light);
 			this->w.draw_line(this->rect.x             , this->rect.y             , this->rect.x+this->rect.w, this->rect.y             , color_light, color_light, color_light);
 			this->w.draw_line(this->rect.x+this->rect.w, this->rect.y             , this->rect.x+this->rect.w, this->rect.y+this->rect.h, color_dark , color_dark , color_dark );
 			this->w.draw_line(this->rect.x             , this->rect.y+this->rect.h, this->rect.x+this->rect.w, this->rect.y+this->rect.h, color_dark , color_dark , color_dark );
-
+			// Text
 			int x = this->rect.x + this->rect.w/2 - text.w/2;
 			int y = this->rect.y + this->rect.h/2 - text.h/2;
-			text.render(x+offset, y+offset/*, this->rect.w, this->rect.h*/);
+			text.render(x+offset, y+offset);
 		}
 
 		virtual void event_mouse_button_down([[maybe_unused]]int x, [[maybe_unused]]int y)
@@ -78,8 +81,8 @@ struct OW
 			if ( ! pressed)
 				return;
 			pressed = false;
-			event_redraw();
 			event_clicked();
+			event_redraw();
 		}
 
 		virtual void event_clicked() {}
@@ -89,10 +92,10 @@ struct OW
 	{
 		std::vector<std::unique_ptr<Widget>> widgets;
 
-		template<typename WDG>
-		WDG & make_widget(Rect r)
+		template<typename WDG, typename...P>
+		WDG & make_widget(Rect r, P...p)
 		{
-			widgets.emplace_back(std::make_unique<WDG>(*this, r));
+			widgets.emplace_back(std::make_unique<WDG>(*this, r, p...));
 			widgets.back()->event_redraw();
 			return (WDG&)*widgets.back();
 		}
@@ -139,7 +142,9 @@ struct OW
 		template<typename W>
 		Window & make_window()
 		{
-			return window_system_wrapper.template make_window<W>();
+			auto & w = window_system_wrapper.template make_window<W>();
+			w.event_redraw();
+			return w;
 		}
 
 		void loop()
