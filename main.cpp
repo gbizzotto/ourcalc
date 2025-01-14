@@ -9,8 +9,8 @@ struct my_button_t : OurW::Button
 {
 	OurW::Button * butt1;
 
-	my_button_t(OurW::Window & _w, OurW::Rect _r)
-		: OurW::Button(_w, _r)
+	my_button_t(std::string t, OurW::Rect r)
+		: OurW::Button(t, r)
 	{}
 
 	void set_target(OurW::Button & b)
@@ -27,32 +27,18 @@ struct my_button_t : OurW::Button
 struct my_window : OurW::Window
 {
 	using Super = typename OurW::Window;
-	OurW::Button & butt1;
-	my_button_t & butt2;
+	OurW::Button butt1;
+	my_button_t  butt2;
 
 	my_window()
-		: butt1(make_widget<std::remove_reference<decltype(butt1)>::type>({10,50,200,40}))
-		, butt2(make_widget<std::remove_reference<decltype(butt2)>::type>({10,150,200,40}))
+		: butt1("button 1", {10, 50,200,40})
+		, butt2("button 2", {10,150,200,40})
 	{
-		butt1.set_text("abcd");
 		butt2.set_target(butt1);
-	}
-/*
-	virtual void event_redraw() override
-	{
-		fill(255,255,255);	
-		Super::ok();
-	}
 
-	virtual void event_mouse_button_down() override
-	{
-		fill(0,0,0);		
+		this->add_widget(&butt1);
+		this->add_widget(&butt2);
 	}
-	virtual void event_mouse_button_up() override
-	{
-		fill(255,255,255);
-	}
-*/
 };
 
 

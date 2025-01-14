@@ -175,16 +175,25 @@ cleanup:
 
 struct Text
 {
-	Window * window;
+	Window * window = nullptr;
 	SDL_Surface* message_surface = nullptr;
 	SDL_Texture* message_texture = nullptr;
 	int w, h;
 	std::string text;
 
+	Text(std::string s)
+		: text(s)
+	{}
 	Text(std::string s, Window * win)
-		: window(win)
-		, text(s)
+		: text(s)
 	{
+		set_parent_window(win);
+	}
+
+	void set_parent_window(Window * win)
+	{
+		window = win;
+
 		//*
 		if ( ! text.size())
 			return;
@@ -192,7 +201,7 @@ struct Text
 		// pre-render text
 		SDL_Color color = {64,64,64,0};
 
-		message_surface = TTF_RenderText_Solid(window->font, s.c_str(), color);
+		message_surface = TTF_RenderText_Solid(window->font, text.c_str(), color);
 		message_texture = SDL_CreateTextureFromSurface(win->renderer, message_surface);
 		SDL_SetTextureBlendMode(message_texture, SDL_BLENDMODE_BLEND);
 
@@ -210,6 +219,8 @@ struct Text
 	void render(int x, int y/*, int w, int h*/)
 	{
 		if ( ! text.size())
+			return;
+		if ( ! window)
 			return;
 
 		/*if (message_texture) {
