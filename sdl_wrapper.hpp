@@ -7,17 +7,20 @@
 #include <SDL2/SDL_ttf.h>
 #include <SDL2/SDL_image.h>
 
+struct DrawableArea;
+
 struct Window
 {
 	SDL_Surface* winSurface = NULL;
 	SDL_Window* sdl_window = NULL;
 	SDL_Renderer* renderer = NULL;
 	TTF_Font * font;
+	int w, h;
 	
-	Window()
+	Window(const char * title, int width, int height)
 	{
 		// Create our window
-		sdl_window = SDL_CreateWindow( "Example", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 1280, 720, SDL_WINDOW_SHOWN );
+		sdl_window = SDL_CreateWindow(title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, SDL_WINDOW_SHOWN);
 
 		// Make sure creating the window succeeded
 		if ( ! sdl_window)
@@ -44,46 +47,12 @@ struct Window
 		SDL_DestroyWindow(sdl_window);
 	}
 
-	void fill(int r, int g, int b)
-	{
-	    SDL_SetRenderDrawColor(renderer, r, g, b, 0);
-	    SDL_RenderFillRect(renderer, nullptr);
-	}
-
 	virtual void event_redraw() {}
 
 	virtual void event_mouse_button_down([[maybe_unused]]int x, [[maybe_unused]]int y) {}
 	virtual void event_mouse_button_up  ([[maybe_unused]]int x, [[maybe_unused]]int y) {}
 
-	void draw_line(int x1, int y1, int x2, int y2, int r, int g, int b)
-	{
-	    SDL_SetRenderDrawColor(renderer, r, g, b, 0);
-		SDL_RenderDrawLine(renderer, x1, y1, x2, y2);
-	}
-	void draw_rect(int x, int y, int w, int h, int r, int g, int b)
-	{
-	    SDL_Rect rect;
-	    rect.x = x;
-	    rect.y = y;
-	    rect.w = w;
-	    rect.h = h;
-
-	    SDL_SetRenderDrawColor(renderer, r, g, b, 0);
-	    SDL_RenderDrawRect(renderer, &rect);
-	}
-	void fill_rect(int x, int y, int w, int h, int r, int g, int b)
-	{
-	    SDL_Rect rect;
-	    rect.x = x;
-	    rect.y = y;
-	    rect.w = w;
-	    rect.h = h;
-
-	    SDL_SetRenderDrawColor(renderer, r, g, b, 0);
-	    SDL_RenderFillRect(renderer, &rect);
-	}
-
-	void refresh()
+	virtual void present()
 	{
 		SDL_RenderPresent(renderer);
 	}
@@ -171,8 +140,6 @@ cleanup:
     SDL_DestroyTexture(ren_tex);
 }
 
-
-
 struct Text
 {
 	Window * window = nullptr;
@@ -181,34 +148,13 @@ struct Text
 	int w, h;
 	std::string text;
 
-	Text(std::string s)
-		: text(s)
-	{}
 	Text(std::string s, Window * win)
-		: text(s)
+		: window(win)
 	{
-		set_parent_window(win);
+		set_text(s);
 	}
+	Text(Text & other) = delete;
 
-	void set_parent_window(Window * win)
-	{
-		window = win;
-
-		//*
-		if ( ! text.size())
-			return;
-
-		// pre-render text
-		SDL_Color color = {64,64,64,0};
-
-		message_surface = TTF_RenderText_Solid(window->font, text.c_str(), color);
-		message_texture = SDL_CreateTextureFromSurface(win->renderer, message_surface);
-		SDL_SetTextureBlendMode(message_texture, SDL_BLENDMODE_BLEND);
-
-	    w = message_surface->w;
-	    h = message_surface->h;
-	    /**/
-	}
 	~Text()
 	{
 		if (message_texture)
@@ -216,47 +162,143 @@ struct Text
 		if (message_surface)
 			SDL_FreeSurface(message_surface);
 	}
-	void render(int x, int y/*, int w, int h*/)
+
+	void set_text(std::string s)
+	{
+		text = s;
+		render();
+	}
+
+	void render()
 	{
 		if ( ! text.size())
 			return;
-		if ( ! window)
-			return;
 
-		/*if (message_texture) {
+		if (message_texture)
 			SDL_DestroyTexture(message_texture);
-			message_texture = nullptr;
-		}
-		if (message_surface) {
+		if (message_surface)
 			SDL_FreeSurface(message_surface);
-			message_surface = nullptr;
-		}*/
 
-		//*
+		// pre-render text
 		SDL_Color color = {64,64,64,0};
 
-		message_surface = TTF_RenderText_Solid(window->font, text.c_str(), color);
+		message_surface = TTF_RenderText_Blended(window->font, text.c_str(), color);
 		message_texture = SDL_CreateTextureFromSurface(window->renderer, message_surface);
 		SDL_SetTextureBlendMode(message_texture, SDL_BLENDMODE_BLEND);
 
 	    w = message_surface->w;
 	    h = message_surface->h;
-	    /**/
 
-		//save_texture(window->renderer, message_texture, "b.png");
+		if (message_surface)
+		{
+			SDL_FreeSurface(message_surface);
+			message_surface = nullptr;
+		}
+	}
+};
 
+struct DrawableArea
+{
+	SDL_Texture * texture = nullptr;
+	SDL_Renderer * renderer;
+	int w, h;
+
+	DrawableArea(Window * window, int width, int height)
+		: renderer(window->renderer)
+		, w(width)
+		, h(height)
+	{
+		texture = SDL_CreateTexture(window->renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, width, height);
+		SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+	}
+	~DrawableArea()
+	{
+		if (texture)
+		{
+			SDL_DestroyTexture(texture);
+			texture = nullptr;
+		}
+	}
+
+	void copy_from(DrawableArea & other, int x, int y)
+	{
 		SDL_Rect rect;
 		rect.x = x;
 		rect.y = y;
+		rect.w = other.w;
+		rect.h = other.h;
+		SDL_SetRenderTarget(renderer, texture);
+		SDL_RenderCopy(renderer, other.texture, NULL, &rect);
+		SDL_SetRenderTarget(renderer, NULL);
+	}
+	void copy_from(Text & text, int x, int y)
+	{
+		SDL_Rect rect;
+		rect.x = x;
+		rect.y = y;
+		rect.w = text.w;
+		rect.h = text.h;
+		SDL_SetRenderTarget(renderer, texture);
+		SDL_RenderCopy(renderer, text.message_texture, NULL, &rect);
+		SDL_SetRenderTarget(renderer, NULL);
+	}
+	void refresh_window()
+	{
+		SDL_SetRenderTarget(renderer, NULL);
+		SDL_RenderCopy(renderer, texture, NULL, NULL);
+	}
+
+	void fill(int r, int g, int b)
+	{
+		SDL_Rect rect;
+		rect.x = 0;
+		rect.y = 0;
 		rect.w = w;
 		rect.h = h;
-		SDL_RenderCopy(window->renderer, message_texture, NULL, &rect);
+		SDL_SetRenderTarget(renderer, texture);
+	    SDL_SetRenderDrawColor(renderer, r, g, b, 255);
+	    SDL_RenderFillRect(renderer, &rect);
+		SDL_SetRenderTarget(renderer, NULL);
+	}
+	void draw_line(int x1, int y1, int x2, int y2, int r, int g, int b)
+	{
+		SDL_SetRenderTarget(renderer, texture);
+	    SDL_SetRenderDrawColor(renderer, r, g, b, 255);
+		SDL_RenderDrawLine(renderer, x1, y1, x2, y2);
+		SDL_SetRenderTarget(renderer, NULL);
+	}
+	void draw_rect(int x, int y, int w, int h, int r, int g, int b)
+	{
+	    SDL_Rect rect;
+	    rect.x = x;
+	    rect.y = y;
+	    rect.w = w;
+	    rect.h = h;
+
+		SDL_SetRenderTarget(renderer, texture);
+	    SDL_SetRenderDrawColor(renderer, r, g, b, 255);
+	    SDL_RenderDrawRect(renderer, &rect);
+		SDL_SetRenderTarget(renderer, NULL);
+	}
+	void fill_rect(int x, int y, int w, int h, int r, int g, int b)
+	{
+	    SDL_Rect rect;
+	    rect.x = x;
+	    rect.y = y;
+	    rect.w = w;
+	    rect.h = h;
+
+		SDL_SetRenderTarget(renderer, texture);
+	    SDL_SetRenderDrawColor(renderer, r, g, b, 255);
+	    SDL_RenderFillRect(renderer, &rect);
+		SDL_SetRenderTarget(renderer, NULL);
 	}
 };
 
 struct SDL
 {
 	using Window_t = Window;
+	using DrawableArea_t = DrawableArea;
 
 	std::vector<std::unique_ptr<Window_t>> windows;
 
@@ -274,9 +316,9 @@ struct SDL
 	}
 
 	template<typename W>
-	W & make_window()
+	W & make_window(const char * title, int width, int height)
 	{
-		windows.emplace_back(std::make_unique<W>());
+		windows.emplace_back(std::make_unique<W>(title, width, height));
 		return (W&)*windows.back();
 	}
 

@@ -16,41 +16,50 @@ struct OW
 	{
 		Window * parent_window = nullptr;
 		Rect rect;
+		WSW::DrawableArea_t drawable_area;
 
-		Widget(Rect r)
-			: rect(r)
+		Widget(Window * window, Rect r)
+			: parent_window(window)
+			, drawable_area(window, r.w, r.h)
+			, rect(r)
 		{}
-
-		virtual void set_parent_window(Window * parent)
-		{
-			parent_window = parent;
-		}
 
 		virtual void event_redraw() {}
 
 		virtual void event_mouse_button_down([[maybe_unused]]int x, [[maybe_unused]]int y) {}
 		virtual void event_mouse_button_up  ([[maybe_unused]]int x, [[maybe_unused]]int y) {}
 	};
+	
+	struct Label : Widget
+	{
+		Text caption;
+
+		Label(Window * parent_window, std::string text, Rect r)
+			: Widget(parent_window, r)
+			, caption(std::move(text), parent_window)
+		{}
+
+		virtual void event_redraw() override
+		{
+			caption.render();
+			int y = (this->rect.h - caption.h) / 2;
+			this->drawable_area.copy_from(caption, 0, y);
+		}
+	};
 
 	struct Button : Widget
 	{
 		bool pressed = false;
-		Text text;
+		Text caption;
 
-		Button(std::string t, Rect r)
-			: Widget{r}
-			, text(t)
+		Button(Window * parent_window, std::string t, Rect r)
+			: Widget(parent_window, r)
+			, caption(t, parent_window)
 		{}
-
-		virtual void set_parent_window(Window * parent) override
-		{
-			Widget::set_parent_window(parent);
-			text.set_parent_window(parent);
-		}
 
 		void set_text(std::string s)
 		{
-			text = Text(s, this->parent_window);
+			caption.set_text(s);
 			event_redraw();
 		}
 
@@ -67,16 +76,17 @@ struct OW
 			}
 
 			// Background
-			this->parent_window->fill_rect(this->rect.x, this->rect.y, this->rect.w, this->rect.h, color_bg, color_bg, color_bg);
+			this->drawable_area.fill(color_bg, color_bg, color_bg);
 			// Border
-			this->parent_window->draw_line(this->rect.x             , this->rect.y             , this->rect.x             , this->rect.y+this->rect.h, color_light, color_light, color_light);
-			this->parent_window->draw_line(this->rect.x             , this->rect.y             , this->rect.x+this->rect.w, this->rect.y             , color_light, color_light, color_light);
-			this->parent_window->draw_line(this->rect.x+this->rect.w, this->rect.y             , this->rect.x+this->rect.w, this->rect.y+this->rect.h, color_dark , color_dark , color_dark );
-			this->parent_window->draw_line(this->rect.x             , this->rect.y+this->rect.h, this->rect.x+this->rect.w, this->rect.y+this->rect.h, color_dark , color_dark , color_dark );
+			this->drawable_area.draw_line(0               , 0               , 0             , this->rect.h-1, color_light, color_light, color_light);
+			this->drawable_area.draw_line(0               , 0               , this->rect.w-1, 0             , color_light, color_light, color_light);
+			this->drawable_area.draw_line(0+this->rect.w-1, 0               , this->rect.w-1, this->rect.h-1, color_dark , color_dark , color_dark );
+			this->drawable_area.draw_line(0               , 0+this->rect.h-1, this->rect.w-1, this->rect.h-1, color_dark , color_dark , color_dark );
 			// Text
-			int x = this->rect.x + this->rect.w/2 - text.w/2;
-			int y = this->rect.y + this->rect.h/2 - text.h/2;
-			text.render(x+offset, y+offset);
+			caption.render();
+			int x = (this->rect.w - caption.w) / 2 + offset;
+			int y = (this->rect.h - caption.h) / 2 + offset;
+			this->drawable_area.copy_from(caption, x, y);
 		}
 
 		virtual void event_mouse_button_down([[maybe_unused]]int x, [[maybe_unused]]int y)
@@ -98,25 +108,61 @@ struct OW
 		virtual void event_clicked() {}
 	};
 
-	struct Window : public WSW::Window_t
+
+	struct TextEdit : Widget
+	{
+		Text caption;
+		static const int padding = 5;
+
+		TextEdit(Window * parent_window, std::string t, Rect r)
+			: Widget(parent_window, r)
+			, caption(t, parent_window)
+		{}
+
+		void set_text(std::string s)
+		{
+			caption.set_text(s);
+			event_redraw();
+		}
+
+		virtual void event_redraw() override
+		{
+			int color_bg = 255;
+			int color_light = 220;
+			int color_dark  = 64;
+
+			// Background
+			this->drawable_area.fill(color_bg, color_bg, color_bg);
+			// Border
+			this->drawable_area.draw_line(0               , 0             , 0             , this->rect.h-1, color_dark , color_dark , color_dark );
+			this->drawable_area.draw_line(0               , 0             , this->rect.w-1, 0             , color_dark , color_dark , color_dark );
+			this->drawable_area.draw_line(0+this->rect.w-1, 0             , this->rect.w-1, this->rect.h-1, color_light, color_light, color_light);
+			this->drawable_area.draw_line(0               , this->rect.h-1, this->rect.w-1, this->rect.h-1, color_light, color_light, color_light);
+			// Text
+			caption.render();
+			int x = padding;
+			int y = (this->rect.h - caption.h) / 2;
+			this->drawable_area.copy_from(caption, x, y);
+		}
+	};
+
+	struct Layout
 	{
 		std::vector<Widget*> widgets;
+		Window * window;
+		Rect rect;
 
-		/*
-		template<typename WDG, typename...P>
-		WDG & make_widget(Rect r, P...p)
-		{
-			widgets.emplace_back(std::make_unique<WDG>(*this, r, p...));
-			widgets.back()->event_redraw();
-			return (WDG&)*widgets.back();
-		}
-		*/
+		Layout(Window * w, Rect r)
+			: window(w)
+			, rect(r)
+		{}
+
 		void add_widget(Widget * widget)
 		{
 			widgets.push_back(widget);
-			widget->set_parent_window(this);
-			widget->event_redraw();
-			this->refresh();
+			//widget->event_redraw();
+			//this->window->drawable_area.copy_from(widget->drawable_area, widget->rect.x, widget->rect.y);
+			//this->window->present();
 		}
 
 		Widget * find_widget_at(int x, int y)
@@ -128,28 +174,102 @@ struct OW
 			return nullptr;
 		}
 
+		void event_redraw()
+		{
+			this->window->drawable_area.fill(196,196,196);
+			for (Widget *  widget : widgets) {
+				widget->event_redraw();
+				this->window->drawable_area.copy_from(widget->drawable_area, widget->rect.x, widget->rect.y);
+			}
+		}
+	};
+	struct VLayout : Layout
+	{
+		int next_y = 0;
+
+		VLayout(Window * w, Rect r)
+			: Layout(w, r)
+		{}
+		VLayout(Layout && other)
+			: Layout(other.window, other.rect)
+		{
+			for (Widget * widget : other.widgets)
+				add_widget(widget);
+		}
+
+		void add_widget(Widget * widget)
+		{
+			widget->rect.y = next_y;
+			next_y += widget->rect.h;
+			widget->rect.x = (this->window->w - widget->rect.w) / 2;
+			this->widgets.push_back(widget);
+			//widget->event_redraw();
+			//this->window->drawable_area.copy_from(widget->drawable_area, widget->rect.x, widget->rect.y);
+			//this->window->drawable_area.refresh_window();
+			//this->window->present();
+		}
+
+		Widget * find_widget_at(int x, int y)
+		{
+			for (Widget * widget : this->widgets)
+				if (   x >= widget->rect.x && x < widget->rect.x + widget->rect.w
+					&& y >= widget->rect.y && y < widget->rect.y + widget->rect.h )
+					return &*widget;
+			return nullptr;
+		}
+
+		void event_redraw()
+		{
+			this->window->drawable_area.fill(196,196,196);
+			for (Widget *  widget : this->widgets) {
+				widget->event_redraw();
+				this->window->drawable_area.copy_from(widget->drawable_area, widget->rect.x, widget->rect.y);
+			}
+		}
+	};
+
+	struct Window : public WSW::Window_t
+	{
+		int w, h;
+		std::unique_ptr<Layout> layout;
+		DrawableArea drawable_area;
+
+		Window(const char * title, int width, int height)
+			: WSW::Window_t(title, width, height)
+			, w(width)
+			, h(height)
+			, layout(std::make_unique<Layout>(this, Rect{0, 0, width, height}))
+			, drawable_area(this, width, height)
+		{}
+
+		template<typename L>
+		void set_layout_type()
+		{
+			layout = std::make_unique<L>(std::move(*layout));
+			event_redraw();
+		}
+
 		virtual void event_redraw()
 		{
-			this->fill(196,196,196);
-			for (Widget *  widget : widgets)
-				widget->event_redraw();
-			this->refresh();
+			layout->event_redraw();
+			drawable_area.refresh_window();
+			WSW::Window_t::present();
 		}
 
 		virtual void event_mouse_button_down(int x, int y)
 		{
-			Widget * widget = find_widget_at(x, y);
+			Widget * widget = layout->find_widget_at(x, y);
 			if (widget) {
 				widget->event_mouse_button_down(x, y);
-				this->refresh();
+				this->event_redraw();
 			}
 		}
 		virtual void event_mouse_button_up(int x, int y)
 		{
-			Widget * widget = find_widget_at(x, y);
+			Widget * widget = layout->find_widget_at(x, y);
 			if (widget) {
 				widget->event_mouse_button_up(x, y);
-				this->refresh();
+				this->event_redraw();
 			}
 		}
 	};
@@ -159,9 +279,9 @@ struct OW
 		WSW window_system_wrapper;
 
 		template<typename W>
-		Window & make_window()
+		Window & make_window(const char * title="", int width=1280, int height=1024)
 		{
-			auto & w = window_system_wrapper.template make_window<W>();
+			auto & w = window_system_wrapper.template make_window<W>(title, width, height);
 			w.event_redraw();
 			return w;
 		}
