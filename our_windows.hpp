@@ -1,6 +1,8 @@
 
 #pragma once
 
+#include <iostream>
+
 template<typename WSW>
 struct OW
 {
@@ -20,14 +22,26 @@ struct OW
 
 		Widget(Window * window, Rect r)
 			: parent_window(window)
-			, drawable_area(window, r.w, r.h)
 			, rect(r)
+			, drawable_area(window, r.w, r.h)
 		{}
+
+		bool has_focus()
+		{
+			return parent_window->has_focus(this);
+		}
+		void take_focus()
+		{
+			parent_window->set_focus(this);
+		}
 
 		virtual void event_redraw() {}
 
 		virtual void event_mouse_button_down([[maybe_unused]]int x, [[maybe_unused]]int y) {}
 		virtual void event_mouse_button_up  ([[maybe_unused]]int x, [[maybe_unused]]int y) {}
+		virtual void event_key_down(int key) {}
+		virtual void event_key_up  (int key) {}
+
 	};
 	
 	struct Label : Widget
@@ -74,6 +88,8 @@ struct OW
 				std::swap(color_light, color_dark);
 				offset = 1;
 			}
+			if (this->has_focus())
+				color_light = color_dark = 0;
 
 			// Background
 			this->drawable_area.fill(color_bg, color_bg, color_bg);
@@ -94,6 +110,7 @@ struct OW
 			if (pressed)
 				return;
 			pressed = true;
+			this->take_focus();
 			event_redraw();
 		}
 		virtual void event_mouse_button_up  ([[maybe_unused]]int x, [[maybe_unused]]int y)
@@ -113,11 +130,17 @@ struct OW
 	{
 		Text caption;
 		static const int padding = 5;
-
+		int text_x;
+		int text_y;	
+		int char_pos = 0;
+		int cursor_x = 0;
+	
 		TextEdit(Window * parent_window, std::string t, Rect r)
 			: Widget(parent_window, r)
 			, caption(t, parent_window)
-		{}
+		{
+			event_redraw();
+		}
 
 		void set_text(std::string s)
 		{
@@ -139,10 +162,88 @@ struct OW
 			this->drawable_area.draw_line(0+this->rect.w-1, 0             , this->rect.w-1, this->rect.h-1, color_light, color_light, color_light);
 			this->drawable_area.draw_line(0               , this->rect.h-1, this->rect.w-1, this->rect.h-1, color_light, color_light, color_light);
 			// Text
-			caption.render();
-			int x = padding;
-			int y = (this->rect.h - caption.h) / 2;
-			this->drawable_area.copy_from(caption, x, y);
+			//caption.render();
+			text_x = padding;
+			text_y = (this->rect.h - caption.h) / 2;
+			this->drawable_area.copy_from(caption, text_x, text_y);
+
+			// cursor
+			if (this->has_focus())
+			{
+				this->drawable_area.draw_line(cursor_x, text_y, cursor_x, text_y + caption.h, 0, 0, 0);
+			}
+		}
+
+		virtual void event_mouse_button_down([[maybe_unused]]int x, [[maybe_unused]]int y) override
+		{
+			this->take_focus();
+			char_pos = caption.get_pos_at(x - this->rect.x - text_x);
+			cursor_x = text_x + caption.get_char_x(char_pos);
+		}
+
+		virtual void event_key_down(int key) override
+		{
+			bool caption_changed = false;
+			bool cursor_changed = false;
+			auto str = caption.get_text();
+			if (key == '\b')
+			{
+				// backspace
+				if (char_pos == 0)
+					return;
+				str.erase(std::begin(str)+(char_pos-1), std::begin(str)+char_pos);
+				--char_pos;
+				caption_changed = true;
+				cursor_changed = true;
+			}
+			else if (key == 127)
+			{
+				// suppress
+				if (char_pos == caption.text.size())
+					return;
+				str.erase(std::begin(str)+(char_pos), std::begin(str)+(char_pos+1));
+				caption_changed = true;
+			}
+			else if (key == 1)
+			{
+				// up, do nothing
+			}
+			else if (key == 2)
+			{
+				// right, do nothing
+			}
+			else if (key == 3)
+			{
+				// left
+				if (char_pos == 0)
+					return;
+				--char_pos;
+				cursor_changed = true;
+			}
+			else if (key == 4)
+			{
+				// left
+				if (char_pos == caption.text.size())
+					return;
+				++char_pos;
+				cursor_changed = true;
+			}
+			else
+			{
+				// printable char
+				str.insert(str.begin()+char_pos, key);
+				++char_pos;
+				caption_changed = true;
+				cursor_changed = true;
+			}
+
+			if (caption_changed)
+				caption.set_text(str);
+			if (cursor_changed)
+				cursor_x = text_x + caption.get_char_x(char_pos);
+
+			if (caption_changed || cursor_changed)
+				event_redraw();
 		}
 	};
 
@@ -233,6 +334,7 @@ struct OW
 		int w, h;
 		std::unique_ptr<Layout> layout;
 		DrawableArea drawable_area;
+		Widget * focused = nullptr;
 
 		Window(const char * title, int width, int height)
 			: WSW::Window_t(title, width, height)
@@ -247,6 +349,15 @@ struct OW
 		{
 			layout = std::make_unique<L>(std::move(*layout));
 			event_redraw();
+		}
+
+		bool has_focus(Widget * widg)
+		{
+			return widg == focused;
+		}
+		void set_focus(Widget * widg)
+		{
+			focused = widg;
 		}
 
 		virtual void event_redraw()
@@ -269,6 +380,22 @@ struct OW
 			Widget * widget = layout->find_widget_at(x, y);
 			if (widget) {
 				widget->event_mouse_button_up(x, y);
+				this->event_redraw();
+			}
+		}
+		virtual void event_key_down(int key)
+		{
+			Widget * widget = this->focused;
+			if (widget) {
+				widget->event_key_down(key);
+				this->event_redraw();
+			}
+		}
+		virtual void event_key_up  (int key)
+		{
+			Widget * widget = this->focused;
+			if (widget) {
+				widget->event_key_up(key);
 				this->event_redraw();
 			}
 		}

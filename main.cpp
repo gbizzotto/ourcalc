@@ -56,7 +56,7 @@ int main()
 	OurW::Manager wm;
 
 	auto & w = wm.make_window<my_window>("Test", 1024, 768);
-	//w.set_layout_type<OurW::VLayout>();
+	w.set_layout_type<OurW::VLayout>();
 
 	wm.loop();
 

@@ -1,6 +1,8 @@
 
 #pragma once
 
+#include <iostream>
+
 #include <vector>
 #include <memory>
 #include <SDL2/SDL.h>
@@ -44,6 +46,7 @@ struct Window
 	~Window()
 	{
 		// This will also destroy the surface
+		//TTF_CloseFont(font);
 		SDL_DestroyWindow(sdl_window);
 	}
 
@@ -51,6 +54,8 @@ struct Window
 
 	virtual void event_mouse_button_down([[maybe_unused]]int x, [[maybe_unused]]int y) {}
 	virtual void event_mouse_button_up  ([[maybe_unused]]int x, [[maybe_unused]]int y) {}
+	virtual void event_key_down(int key) {}
+	virtual void event_key_up  (int key) {}
 
 	virtual void present()
 	{
@@ -147,6 +152,7 @@ struct Text
 	SDL_Texture* message_texture = nullptr;
 	int w, h;
 	std::string text;
+	std::vector<int> char_pos;
 
 	Text(std::string s, Window * win)
 		: window(win)
@@ -163,16 +169,40 @@ struct Text
 			SDL_FreeSurface(message_surface);
 	}
 
+	const std::string & get_text() const { return text; }
 	void set_text(std::string s)
 	{
 		text = s;
 		render();
+		calculate_char_pos();
+	}
+
+	void calculate_char_pos()
+	{
+		char_pos.clear();
+		char_pos.reserve(text.size());
+		std::string tmp_text;
+		tmp_text.reserve(text.size());
+		for (int i=0 ; i<(int)text.size() ; i++)
+		{
+			tmp_text.push_back(text[i]);
+			int calculated_width;
+			int dummy;
+			//TTF_MeasureText(window->font, tmp_text.c_str(), w, &calculated_width, &dummy);
+			TTF_SizeText(window->font, tmp_text.c_str(), &calculated_width, &dummy);
+			char_pos.push_back(calculated_width);
+		}
 	}
 
 	void render()
 	{
 		if ( ! text.size())
+		{
+			message_texture = SDL_CreateTexture(window->renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, 0, 0);
+			//SDL_RenderFillRect
+			SDL_SetTextureBlendMode(message_texture, SDL_BLENDMODE_BLEND);
 			return;
+		}
 
 		if (message_texture)
 			SDL_DestroyTexture(message_texture);
@@ -194,6 +224,17 @@ struct Text
 			SDL_FreeSurface(message_surface);
 			message_surface = nullptr;
 		}
+	}
+	int get_pos_at(int x)
+	{
+		return std::lower_bound(std::begin(char_pos), std::end(char_pos), x) - std::begin(char_pos);
+	}
+	int get_char_x(int i)
+	{
+		if (i == 0)
+			return 0;
+		else
+			return char_pos[i-1];
 	}
 };
 
@@ -312,6 +353,7 @@ struct SDL
 	~SDL()
 	{
 		// Quit SDL
+		TTF_Quit();
 		SDL_Quit();	
 	}
 
@@ -354,44 +396,56 @@ struct SDL
 							}
 						break;
 					}
+					case SDL_MOUSEMOTION:
+						// etc.
+						break;
+					case SDL_MOUSEBUTTONDOWN:
 					case SDL_MOUSEBUTTONUP:
 					{
-						SDL_Window* sdl_window = SDL_GetWindowFromID(((SDL_MouseButtonEvent&)e).windowID);
+						SDL_MouseButtonEvent & ev = (SDL_MouseButtonEvent&) e;
+						SDL_Window * sdl_window = SDL_GetWindowFromID(ev.windowID);
 						if ( ! sdl_window)
 							break;
 						for(auto & window : windows)
 							if (window->sdl_window == sdl_window)
 							{
-								SDL_MouseButtonEvent & ev = (SDL_MouseButtonEvent&) e;
-								window->event_mouse_button_up(ev.x, ev.y);
+								if (e.type == SDL_MOUSEBUTTONDOWN)
+									window->event_mouse_button_down(ev.x, ev.y);
+								else if (e.type == SDL_MOUSEBUTTONUP)
+									window->event_mouse_button_up(ev.x, ev.y);
 								break;
 							}
 						break;
 					}
-					case SDL_MOUSEBUTTONDOWN:
+					case SDL_KEYDOWN:
+					case SDL_KEYUP:
 					{
-						SDL_Window* sdl_window = SDL_GetWindowFromID(((SDL_MouseButtonEvent&)e).windowID);
+						SDL_KeyboardEvent & ev = (SDL_KeyboardEvent&) e;
+						SDL_Window * sdl_window = SDL_GetWindowFromID(ev.windowID);
 						if ( ! sdl_window)
 							break;
+						switch (ev.keysym.scancode)
+						{
+							case SDL_SCANCODE_UP   : ev.keysym.sym = 1; break;
+							case SDL_SCANCODE_DOWN : ev.keysym.sym = 2; break;
+							case SDL_SCANCODE_LEFT : ev.keysym.sym = 3; break;
+							case SDL_SCANCODE_RIGHT: ev.keysym.sym = 4; break;
+							default:
+								break;
+						}
 						for(auto & window : windows)
 							if (window->sdl_window == sdl_window)
 							{
-								SDL_MouseButtonEvent & ev = (SDL_MouseButtonEvent&) e;
-								window->event_mouse_button_down(ev.x, ev.y);
+								if (e.type == SDL_KEYDOWN)
+									window->event_key_down(ev.keysym.sym);
+								else if (e.type == SDL_KEYUP)
+									window->event_key_up(ev.keysym.sym);
 								break;
 							}
 						break;
 					}
 					case SDL_QUIT:
 						return;
-					case SDL_KEYDOWN:
-						break;
-					case SDL_KEYUP:
-						// can also test individual keys, modifier flags, etc, etc.
-						break;
-					case SDL_MOUSEMOTION:
-						// etc.
-						break;
 				}
 			}
 
