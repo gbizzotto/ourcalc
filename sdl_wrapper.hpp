@@ -52,10 +52,10 @@ struct Window
 
 	virtual void event_redraw() {}
 
-	virtual void event_mouse_button_down([[maybe_unused]]int x, [[maybe_unused]]int y) {}
-	virtual void event_mouse_button_up  ([[maybe_unused]]int x, [[maybe_unused]]int y) {}
-	virtual void event_key_down(int key) {}
-	virtual void event_key_up  (int key) {}
+	virtual bool event_mouse_button_down([[maybe_unused]]int x, [[maybe_unused]]int y) { return false; }
+	virtual bool event_mouse_button_up  ([[maybe_unused]]int x, [[maybe_unused]]int y) { return false; }
+	virtual bool event_key_down([[maybe_unused]]int key) { return false; }
+	virtual bool event_key_up  ([[maybe_unused]]int key) { return false; }
 
 	virtual void present()
 	{

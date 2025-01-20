@@ -46,7 +46,7 @@ struct my_window : OurW::Window
 		this->layout->add_widget(&text1);
 		this->layout->add_widget(&label1);
 
-		event_redraw();
+		Container::event_redraw();
 	}
 };
 

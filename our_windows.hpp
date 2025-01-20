@@ -35,15 +35,130 @@ struct OW
 			parent_window->set_focus(this);
 		}
 
+		virtual bool focusable() { return true; }
 		virtual void event_redraw() {}
 
-		virtual void event_mouse_button_down([[maybe_unused]]int x, [[maybe_unused]]int y) {}
-		virtual void event_mouse_button_up  ([[maybe_unused]]int x, [[maybe_unused]]int y) {}
-		virtual void event_key_down(int key) {}
-		virtual void event_key_up  (int key) {}
-
+		virtual bool event_mouse_button_down([[maybe_unused]]int x, [[maybe_unused]]int y) { return false; }
+		virtual bool event_mouse_button_up  ([[maybe_unused]]int x, [[maybe_unused]]int y) { return false; }
+		virtual bool event_key_down([[maybe_unused]]int key) { return false; }
+		virtual bool event_key_up  ([[maybe_unused]]int key) { return false; }
 	};
 	
+	struct Layout
+	{
+		std::vector<Widget*> widgets;
+		DrawableArea & drawable_area;
+		Rect rect;
+		unsigned int focus_idx = 0;
+
+		Layout(DrawableArea & da, Rect r)
+			: drawable_area(da)
+			, rect(r)
+		{}
+
+		void add_widget(Widget * widget)
+		{
+			widgets.push_back(widget);
+			//widget->event_redraw();
+			//this->window->drawable_area.copy_from(widget->drawable_area, widget->rect.x, widget->rect.y);
+			//this->window->present();
+		}
+
+		Widget * find_widget_at(int x, int y)
+		{
+			for (Widget * widget : widgets)
+				if (   x >= widget->rect.x && x < widget->rect.x + widget->rect.w
+					&& y >= widget->rect.y && y < widget->rect.y + widget->rect.h )
+					return &*widget;
+			return nullptr;
+		}
+
+		void event_redraw()
+		{
+			drawable_area.fill(196,196,196);
+			for (Widget *  widget : widgets) {
+				widget->event_redraw();
+				drawable_area.copy_from(widget->drawable_area, widget->rect.x, widget->rect.y);
+			}
+		}
+
+		virtual bool focus_next()
+		{
+			focus_idx = (focus_idx+1) % widgets.size();
+			return true;
+		}
+
+		Widget * get_focused()
+		{
+			if (focus_idx >= widgets.size())
+				return nullptr;
+			return widgets[focus_idx];
+		}
+		void set_focus(Widget * widg)
+		{
+			for (unsigned int i=0 ; i<widgets.size() ; i++)
+				if (widgets[i] == widg)
+				{
+					focus_idx = i;
+					break;
+				}
+		}
+	};
+
+	struct Container
+	{
+		int w, h;
+		DrawableArea drawable_area;
+		std::unique_ptr<Layout> layout;
+
+		Container(Window * window, int width, int height)
+			: w(width)
+			, h(height)
+			, drawable_area(window, width, height)
+			, layout(std::make_unique<Layout>(drawable_area, Rect{0, 0, width, height}))
+		{}
+
+		template<typename L>
+		void set_layout_type()
+		{
+			layout = std::make_unique<L>(std::move(*layout));
+			event_redraw();
+		}
+
+		Widget * get_focused()
+		{
+			return layout->get_focused();
+		}
+		bool focus_next()
+		{
+			return layout->focus_next();
+		}
+
+
+		bool has_focus(Widget * widg)
+		{
+			return widg == layout->get_focused();
+		}
+		void set_focus(Widget * widg)
+		{
+			layout->set_focus(widg);
+		}
+
+		virtual void event_redraw()
+		{
+			layout->event_redraw();
+		}
+
+		Widget * find_widget_at(int x, int y)
+		{
+			return layout->find_widget_at(x, y);
+		}
+	};
+
+
+
+
+
 	struct Label : Widget
 	{
 		Text caption;
@@ -53,6 +168,7 @@ struct OW
 			, caption(std::move(text), parent_window)
 		{}
 
+		virtual bool focusable() override { return false; }
 		virtual void event_redraw() override
 		{
 			caption.render();
@@ -105,21 +221,23 @@ struct OW
 			this->drawable_area.copy_from(caption, x, y);
 		}
 
-		virtual void event_mouse_button_down([[maybe_unused]]int x, [[maybe_unused]]int y)
+		virtual bool event_mouse_button_down([[maybe_unused]]int x, [[maybe_unused]]int y)
 		{
 			if (pressed)
-				return;
+				return false;
 			pressed = true;
 			this->take_focus();
 			event_redraw();
+			return true;
 		}
-		virtual void event_mouse_button_up  ([[maybe_unused]]int x, [[maybe_unused]]int y)
+		virtual bool event_mouse_button_up  ([[maybe_unused]]int x, [[maybe_unused]]int y)
 		{
 			if ( ! pressed)
-				return;
+				return false;
 			pressed = false;
 			event_clicked();
 			event_redraw();
+			return true;
 		}
 
 		virtual void event_clicked() {}
@@ -132,8 +250,8 @@ struct OW
 		static const int padding = 5;
 		int text_x;
 		int text_y;	
-		int char_pos = 0;
-		int cursor_x = 0;
+		unsigned int char_pos = 0;
+		unsigned int cursor_x = 0;
 	
 		TextEdit(Window * parent_window, std::string t, Rect r)
 			: Widget(parent_window, r)
@@ -153,6 +271,9 @@ struct OW
 			int color_bg = 255;
 			int color_light = 220;
 			int color_dark  = 64;
+
+			if (this->has_focus())
+				color_light = color_dark = 0;
 
 			// Background
 			this->drawable_area.fill(color_bg, color_bg, color_bg);
@@ -174,14 +295,15 @@ struct OW
 			}
 		}
 
-		virtual void event_mouse_button_down([[maybe_unused]]int x, [[maybe_unused]]int y) override
+		virtual bool event_mouse_button_down([[maybe_unused]]int x, [[maybe_unused]]int y) override
 		{
 			this->take_focus();
 			char_pos = caption.get_pos_at(x - this->rect.x - text_x);
 			cursor_x = text_x + caption.get_char_x(char_pos);
+			return true;
 		}
 
-		virtual void event_key_down(int key) override
+		virtual bool event_key_down(int key) override
 		{
 			bool caption_changed = false;
 			bool cursor_changed = false;
@@ -190,7 +312,7 @@ struct OW
 			{
 				// backspace
 				if (char_pos == 0)
-					return;
+					return true;
 				str.erase(std::begin(str)+(char_pos-1), std::begin(str)+char_pos);
 				--char_pos;
 				caption_changed = true;
@@ -200,9 +322,14 @@ struct OW
 			{
 				// suppress
 				if (char_pos == caption.text.size())
-					return;
+					return true;
 				str.erase(std::begin(str)+(char_pos), std::begin(str)+(char_pos+1));
 				caption_changed = true;
+			}
+			else if (key == '\t')
+			{
+				// tab
+				return false;
 			}
 			else if (key == 1)
 			{
@@ -216,7 +343,7 @@ struct OW
 			{
 				// left
 				if (char_pos == 0)
-					return;
+					return true;
 				--char_pos;
 				cursor_changed = true;
 			}
@@ -224,7 +351,7 @@ struct OW
 			{
 				// left
 				if (char_pos == caption.text.size())
-					return;
+					return true;
 				++char_pos;
 				cursor_changed = true;
 			}
@@ -243,47 +370,15 @@ struct OW
 				cursor_x = text_x + caption.get_char_x(char_pos);
 
 			if (caption_changed || cursor_changed)
+			{
 				event_redraw();
-		}
-	};
-
-	struct Layout
-	{
-		std::vector<Widget*> widgets;
-		Window * window;
-		Rect rect;
-
-		Layout(Window * w, Rect r)
-			: window(w)
-			, rect(r)
-		{}
-
-		void add_widget(Widget * widget)
-		{
-			widgets.push_back(widget);
-			//widget->event_redraw();
-			//this->window->drawable_area.copy_from(widget->drawable_area, widget->rect.x, widget->rect.y);
-			//this->window->present();
-		}
-
-		Widget * find_widget_at(int x, int y)
-		{
-			for (Widget * widget : widgets)
-				if (   x >= widget->rect.x && x < widget->rect.x + widget->rect.w
-					&& y >= widget->rect.y && y < widget->rect.y + widget->rect.h )
-					return &*widget;
-			return nullptr;
-		}
-
-		void event_redraw()
-		{
-			this->window->drawable_area.fill(196,196,196);
-			for (Widget *  widget : widgets) {
-				widget->event_redraw();
-				this->window->drawable_area.copy_from(widget->drawable_area, widget->rect.x, widget->rect.y);
+				return true;
 			}
+			return false;
 		}
 	};
+
+
 	struct VLayout : Layout
 	{
 		int next_y = 0;
@@ -292,7 +387,7 @@ struct OW
 			: Layout(w, r)
 		{}
 		VLayout(Layout && other)
-			: Layout(other.window, other.rect)
+			: Layout(other.drawable_area, other.rect)
 		{
 			for (Widget * widget : other.widgets)
 				add_widget(widget);
@@ -302,7 +397,7 @@ struct OW
 		{
 			widget->rect.y = next_y;
 			next_y += widget->rect.h;
-			widget->rect.x = (this->window->w - widget->rect.w) / 2;
+			widget->rect.x = (this->drawable_area.w - widget->rect.w) / 2;
 			this->widgets.push_back(widget);
 			//widget->event_redraw();
 			//this->window->drawable_area.copy_from(widget->drawable_area, widget->rect.x, widget->rect.y);
@@ -321,83 +416,90 @@ struct OW
 
 		void event_redraw()
 		{
-			this->window->drawable_area.fill(196,196,196);
+			this->drawable_area.fill(196,196,196);
 			for (Widget *  widget : this->widgets) {
 				widget->event_redraw();
-				this->window->drawable_area.copy_from(widget->drawable_area, widget->rect.x, widget->rect.y);
+				this->drawable_area.copy_from(widget->drawable_area, widget->rect.x, widget->rect.y);
 			}
 		}
 	};
 
-	struct Window : public WSW::Window_t
+	struct Window : public WSW::Window_t, Container
 	{
+		/*
 		int w, h;
 		std::unique_ptr<Layout> layout;
 		DrawableArea drawable_area;
-		Widget * focused = nullptr;
+		*/
 
 		Window(const char * title, int width, int height)
 			: WSW::Window_t(title, width, height)
-			, w(width)
-			, h(height)
-			, layout(std::make_unique<Layout>(this, Rect{0, 0, width, height}))
-			, drawable_area(this, width, height)
+			, Container(this, width, height)
 		{}
 
-		template<typename L>
-		void set_layout_type()
+		virtual void event_redraw() override
 		{
-			layout = std::make_unique<L>(std::move(*layout));
-			event_redraw();
-		}
-
-		bool has_focus(Widget * widg)
-		{
-			return widg == focused;
-		}
-		void set_focus(Widget * widg)
-		{
-			focused = widg;
-		}
-
-		virtual void event_redraw()
-		{
-			layout->event_redraw();
-			drawable_area.refresh_window();
+			Container::event_redraw();
+			Container::drawable_area.refresh_window();
 			WSW::Window_t::present();
-		}
+		}	
 
-		virtual void event_mouse_button_down(int x, int y)
+
+		virtual bool event_mouse_button_down(int x, int y)
 		{
-			Widget * widget = layout->find_widget_at(x, y);
+			Widget * widget = this->find_widget_at(x, y);
 			if (widget) {
-				widget->event_mouse_button_down(x, y);
-				this->event_redraw();
+				if (widget->event_mouse_button_down(x, y))
+				{
+					this->event_redraw();
+					return true;
+				}
 			}
+			return false;
 		}
-		virtual void event_mouse_button_up(int x, int y)
+		virtual bool event_mouse_button_up(int x, int y)
 		{
-			Widget * widget = layout->find_widget_at(x, y);
+			Widget * widget = this->find_widget_at(x, y);
 			if (widget) {
-				widget->event_mouse_button_up(x, y);
-				this->event_redraw();
+				if (widget->event_mouse_button_up(x, y))
+				{
+					this->event_redraw();
+					return true;
+				}
 			}
+			return false;
 		}
-		virtual void event_key_down(int key)
+		virtual bool event_key_down(int key)
 		{
-			Widget * widget = this->focused;
+			Widget * widget = this->get_focused();
 			if (widget) {
-				widget->event_key_down(key);
-				this->event_redraw();
+				if (widget->event_key_down(key))
+				{
+					this->event_redraw();
+					return true;
+				}
 			}
+			// not processed by a widget
+			if (key == SDLK_TAB)
+			{
+				bool handled = this->focus_next();
+				this->event_redraw();
+				return handled;
+			}
+
+			return false;
 		}
-		virtual void event_key_up  (int key)
+		virtual bool event_key_up(int key)
 		{
-			Widget * widget = this->focused;
+			Widget * widget = this->get_focused();
 			if (widget) {
-				widget->event_key_up(key);
-				this->event_redraw();
+				if (widget->event_key_up(key))
+				{
+					this->event_redraw();
+					return true;
+				}
 			}
+			return false;
 		}
 	};
 
