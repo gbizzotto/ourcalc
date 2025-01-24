@@ -168,7 +168,7 @@ struct Text
 		if (message_surface)
 			SDL_FreeSurface(message_surface);
 	}
-
+	const std::pair<int,int> get_size() { return {w,h}; }
 	const std::string & get_text() const { return text; }
 	void set_text(std::string s)
 	{
@@ -259,6 +259,19 @@ struct DrawableArea
 			SDL_DestroyTexture(texture);
 			texture = nullptr;
 		}
+	}
+
+	void set_size(std::pair<int,int> size)
+	{
+		w = std::get<0>(size);
+		h = std::get<1>(size);
+		if (texture)
+		{
+			SDL_DestroyTexture(texture);
+			texture = nullptr;
+		}
+		texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, w, h);
+		SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
 	}
 
 	void copy_from(DrawableArea & other, int x, int y)

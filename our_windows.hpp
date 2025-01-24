@@ -35,6 +35,14 @@ struct OW
 			parent_window->set_focus(this);
 		}
 
+		virtual void pack() {}
+		virtual void set_size(std::pair<int,int> size)
+		{
+			rect.w = std::get<0>(size);
+			rect.h = std::get<1>(size);
+			drawable_area.set_size(size);
+			event_redraw();
+		}
 		virtual bool focusable() { return true; }
 		virtual void event_redraw() {}
 
@@ -59,9 +67,6 @@ struct OW
 		void add_widget(Widget * widget)
 		{
 			widgets.push_back(widget);
-			//widget->event_redraw();
-			//this->window->drawable_area.copy_from(widget->drawable_area, widget->rect.x, widget->rect.y);
-			//this->window->present();
 		}
 
 		Widget * find_widget_at(int x, int y)
@@ -125,6 +130,11 @@ struct OW
 			event_redraw();
 		}
 
+		void add_widget(Widget * widget)
+		{
+			layout->add_widget(widget);
+		}
+
 		Widget * get_focused()
 		{
 			return layout->get_focused();
@@ -133,7 +143,6 @@ struct OW
 		{
 			return layout->focus_next();
 		}
-
 
 		bool has_focus(Widget * widg)
 		{
@@ -175,12 +184,19 @@ struct OW
 			int y = (this->rect.h - caption.h) / 2;
 			this->drawable_area.copy_from(caption, 0, y);
 		}
+
+		virtual void pack() 
+		{
+			this->set_size(caption.get_size());
+		}
 	};
 
 	struct Button : Widget
 	{
 		bool pressed = false;
 		Text caption;
+		int padding = 2;
+		int border = 1;
 
 		Button(Window * parent_window, std::string t, Rect r)
 			: Widget(parent_window, r)
@@ -191,6 +207,11 @@ struct OW
 		{
 			caption.set_text(s);
 			event_redraw();
+		}
+
+		virtual void pack()
+		{
+			this->set_size({2*border + 2*padding + caption.w, 2*border + 2*padding + caption.h});
 		}
 
 		virtual void event_redraw() override
@@ -247,7 +268,8 @@ struct OW
 	struct TextEdit : Widget
 	{
 		Text caption;
-		static const int padding = 5;
+		int padding = 5;
+		int border = 1;
 		int text_x;
 		int text_y;	
 		unsigned int char_pos = 0;
@@ -264,6 +286,11 @@ struct OW
 		{
 			caption.set_text(s);
 			event_redraw();
+		}
+
+		virtual void pack()
+		{
+			this->set_size({2*border + 2*padding + caption.w, 2*border + 2*padding + caption.h});
 		}
 
 		virtual void event_redraw() override

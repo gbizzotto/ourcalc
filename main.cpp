@@ -41,10 +41,13 @@ struct my_window : OurW::Window
 	{
 		butt2.set_target(butt1);
 
-		this->layout->add_widget(&butt1);
-		this->layout->add_widget(&butt2);
-		this->layout->add_widget(&text1);
-		this->layout->add_widget(&label1);
+		add_widget(&butt1);
+		add_widget(&butt2);
+		add_widget(&text1);
+		add_widget(&label1);
+
+		butt1.pack();
+		text1.pack();
 
 		Container::event_redraw();
 	}
