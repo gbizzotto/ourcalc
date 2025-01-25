@@ -41,16 +41,19 @@ struct monitor
 template<typename E>
 struct monitorable
 {
-	std::vector<std::pair<E,monitor<E>*>> monitors;
+	std::vector<monitor<E>*> monitors;
 
 	void notify_monitors(E t)
 	{
 		for(auto & p : monitors)
-			if (p.first == t)
-				p.second->_notify(this, t);
+			p->_notify(this, t);
 	}
-	void add_monitor(monitor<E> * m, E e)
+	void add_monitor(monitor<E> * m)
 	{
-		monitors.push_back(std::make_pair(e,m));
+		monitors.push_back(m);
+	}
+	void remove_monitor(monitor<E> * m)
+	{
+		std::erase_if(monitors, [m](monitor<E> * monitor) { return monitor == m; }); 
 	}
 };

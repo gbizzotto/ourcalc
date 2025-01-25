@@ -46,10 +46,13 @@ struct OW
 		virtual void pack() {}
 		virtual void set_size(std::pair<int,int> size)
 		{
+			if (rect.w == std::get<0>(size) && rect.h == std::get<1>(size))
+				return;
 			rect.w = std::get<0>(size);
 			rect.h = std::get<1>(size);
 			drawable_area.set_size(size);
 			event_redraw();
+			notify_monitors(widget_change_t::resized);
 		}
 		virtual bool focusable() { return true; }
 		virtual void event_redraw() {}
@@ -60,7 +63,7 @@ struct OW
 		virtual bool event_key_up  ([[maybe_unused]]int key) { return false; }
 	};
 	
-	struct LayoutContainer
+	struct LayoutContainer : monitor<widget_change_t>
 	{
 		Window * parent_window;
 		std::vector<Widget*> widgets;
@@ -71,10 +74,21 @@ struct OW
 			: parent_window(window)
 			, drawable_area(window, width, height)
 		{}
+		~LayoutContainer()
+		{
+			for (Widget * widget : this->widgets)
+				widget->remove_monitor(this);
+		}
 
 		void add_widget(Widget * widget)
 		{
 			widgets.push_back(widget);
+			widget->add_monitor(this);
+		}
+
+		virtual void notify(monitorable<widget_change_t> * widget, widget_change_t & event) override
+		{
+			// pass
 		}
 
 		Widget * get_focused()
@@ -431,7 +445,10 @@ struct OW
 			: LayoutContainer(other.parent_window, other.drawable_area.w, other.drawable_area.h)
 		{
 			for (Widget * widget : other.widgets)
+			{
 				add_widget(widget);
+				widget->add_monitor(this);
+			}
 		}
 
 		void add_widget(Widget * widget)
@@ -440,10 +457,27 @@ struct OW
 			next_y += widget->rect.h;
 			widget->rect.x = (this->drawable_area.w - widget->rect.w) / 2;
 			this->widgets.push_back(widget);
+			widget->add_monitor(this);
 			//widget->event_redraw();
 			//this->window->drawable_area.copy_from(widget->drawable_area, widget->rect.x, widget->rect.y);
 			//this->window->drawable_area.refresh_window();
 			//this->window->present();
+		}
+
+		virtual void notify(monitorable<widget_change_t> * widget, widget_change_t & event) override
+		{
+			reorganize_widgets();
+		}
+		void reorganize_widgets()
+		{
+			// reorganize widgets
+			next_y = 0;
+			for (Widget * widget : this->widgets)
+			{
+				widget->rect.y = next_y;
+				next_y += widget->rect.h;
+				widget->rect.x = (this->drawable_area.w - widget->rect.w) / 2;
+			}
 		}
 
 		Widget * find_widget_at(int x, int y)
