@@ -86,6 +86,9 @@ struct OW
 			widget->add_monitor(this);
 		}
 
+		int w() const { return drawable_area.w; }
+		int h() const { return drawable_area.h; }
+
 		virtual void notify(monitorable<widget_change_t> * widget, widget_change_t & event) override
 		{
 			// pass
@@ -188,21 +191,19 @@ struct OW
 			int color_light = 220;
 			int color_dark  = 64;
 
-			this->drawable_area.draw_line(0               , 0               , 0             , this->rect.h-1, color_dark , color_dark , color_dark );
-			this->drawable_area.draw_line(0               , 0               , this->rect.w-1, 0             , color_dark , color_dark , color_dark );
-			this->drawable_area.draw_line(0+this->rect.w-1, 0               , this->rect.w-1, this->rect.h-1, color_light, color_light, color_light);
-			this->drawable_area.draw_line(0               , 0+this->rect.h-1, this->rect.w-1, this->rect.h-1, color_light, color_light, color_light);
-
 			if (is_horizontal)
 			{
-				this->drawable_area.draw_line(1, split_position - thickness/2, this->rect.w, split_position - thickness/2, color_light, color_light, color_light);
-				this->drawable_area.draw_line(1, split_position + thickness/2, this->rect.w, split_position + thickness/2, color_dark	, color_dark , color_dark );
+				this->drawable_area.draw_3d_rect(0,                            0, this->rect.w, one->h()+2*border, color_light, color_dark, true);
+				this->drawable_area.draw_3d_rect(0, split_position + thickness/2, this->rect.w, two->h()+2*border, color_light, color_dark, true);
 				this->drawable_area.copy_from(one->drawable_area, border, border);
-				this->drawable_area.copy_from(two->drawable_area, border, border + one->drawable_area.h + border + thickness + border);
+				this->drawable_area.copy_from(two->drawable_area, border, border + one->h() + border + thickness + border);
 			}
 			else
 			{
-				this->drawable_area.copy_from(one->drawable_area, thickness + one->drawable_area.w, 0);
+				this->drawable_area.draw_3d_rect(split_position + thickness/2, 0, one->w()+2*border, this->rect.h, color_light, color_dark, true);
+				this->drawable_area.draw_3d_rect(                           0, 0, two->w()+2*border, this->rect.h, color_light, color_dark, true);
+				this->drawable_area.copy_from(one->drawable_area, border, border);
+				this->drawable_area.copy_from(two->drawable_area, border + one->w() + border + thickness + border, border);
 			}
 		}
 
@@ -250,7 +251,6 @@ struct OW
 			int offset = 0;
 			if (pressed)
 			{
-				std::swap(color_light, color_dark);
 				offset = 1;
 			}
 			if (this->has_focus())
@@ -259,10 +259,7 @@ struct OW
 			// Background
 			this->drawable_area.fill(color_bg, color_bg, color_bg);
 			// Border
-			this->drawable_area.draw_line(0               , 0               , 0             , this->rect.h-1, color_light, color_light, color_light);
-			this->drawable_area.draw_line(0               , 0               , this->rect.w-1, 0             , color_light, color_light, color_light);
-			this->drawable_area.draw_line(0+this->rect.w-1, 0               , this->rect.w-1, this->rect.h-1, color_dark , color_dark , color_dark );
-			this->drawable_area.draw_line(0               , 0+this->rect.h-1, this->rect.w-1, this->rect.h-1, color_dark , color_dark , color_dark );
+			this->drawable_area.draw_3d_rect(0, 0, this->rect.w, this->rect.h, color_light, color_dark, pressed);
 			// Text
 			caption.render();
 			int x = (this->rect.w - caption.w) / 2 + offset;
@@ -333,10 +330,7 @@ struct OW
 			// Background
 			this->drawable_area.fill(color_bg, color_bg, color_bg);
 			// Border
-			this->drawable_area.draw_line(0               , 0             , 0             , this->rect.h-1, color_dark , color_dark , color_dark );
-			this->drawable_area.draw_line(0               , 0             , this->rect.w-1, 0             , color_dark , color_dark , color_dark );
-			this->drawable_area.draw_line(0+this->rect.w-1, 0             , this->rect.w-1, this->rect.h-1, color_light, color_light, color_light);
-			this->drawable_area.draw_line(0               , this->rect.h-1, this->rect.w-1, this->rect.h-1, color_light, color_light, color_light);
+			this->drawable_area.draw_3d_rect(0, 0, this->rect.w, this->rect.h, color_light, color_dark, true);
 			// Text
 			//caption.render();
 			text_x = padding;
@@ -458,10 +452,6 @@ struct OW
 			widget->rect.x = (this->drawable_area.w - widget->rect.w) / 2;
 			this->widgets.push_back(widget);
 			widget->add_monitor(this);
-			//widget->event_redraw();
-			//this->window->drawable_area.copy_from(widget->drawable_area, widget->rect.x, widget->rect.y);
-			//this->window->drawable_area.refresh_window();
-			//this->window->present();
 		}
 
 		virtual void notify(monitorable<widget_change_t> * widget, widget_change_t & event) override

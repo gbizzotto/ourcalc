@@ -39,7 +39,7 @@ struct my_window : OurW::Window
 		, butt2(this, "button 2", {10,150,200,40})
 		, text1(this, "asdf", {10,200,200,40})
 		, label1(this, "gxb", {10,250,200,40})
-		, split1(this, {200, 200, 400, 400}, true)
+		, split1(this, {200, 200, 400, 400}, false)
 	{
 		butt2.set_target(butt1);
 
