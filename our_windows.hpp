@@ -9,6 +9,7 @@ enum class widget_change_t
 	all = 0,
 	resized,
 	moved,
+	redrawn,
 };
 
 
@@ -178,6 +179,37 @@ struct OW
 					return &*widget;
 			return nullptr;
 		}
+
+		virtual bool event_mouse_button_down(int x, int y) override
+		{
+			Widget * target = find_widget_at(x, y);
+			if (target == nullptr)
+			{
+				return false;
+			}
+			else if (target->event_mouse_button_down(x-target->rect.x, y-target->rect.y))
+			{
+				event_redraw();
+				return true;
+			}
+			else
+				return false;
+		}
+		virtual bool event_mouse_button_up(int x, int y) override
+		{
+			Widget * target = find_widget_at(x, y);
+			if (target == nullptr)
+			{
+				return false;
+			}
+			else if (target->event_mouse_button_up(x-target->rect.x, y-target->rect.y))
+			{
+				event_redraw();
+				return true;
+			}
+			else
+				return false;
+		}
 	};
 
 
@@ -246,25 +278,47 @@ struct OW
 			this->set_size(caption.get_size());
 		}*/
 
-		virtual bool event_mouse_button_down(int x, int y)
+		virtual bool event_mouse_button_down(int x, int y) override
 		{
-			x -= this->rect.x;
-			y -= this->rect.y;
-
+			bool processed = false;
 			if (is_horizontal)
 			{
 				if (y < this->rect.h/2)
-					return one.event_mouse_button_down(x, y);
+					processed = one.event_mouse_button_down(x - one.rect.x, y - one.rect.y);
 				else
-					return two.event_mouse_button_down(x, y);
+					processed = two.event_mouse_button_down(x - two.rect.x, y - two.rect.y);
 			}
 			else
 			{
 				if (x < this->rect.w/2)
-					return one.event_mouse_button_down(x, y);
+					processed = one.event_mouse_button_down(x - one.rect.x, y - one.rect.y);
 				else
-					return two.event_mouse_button_down(x, y);
+					processed = two.event_mouse_button_down(x - two.rect.x, y - two.rect.y);
 			}
+			if (processed)
+				event_redraw();
+			return processed;
+		}
+		virtual bool event_mouse_button_up(int x, int y) override
+		{
+			bool processed = false;
+			if (is_horizontal)
+			{
+				if (y < this->rect.h/2)
+					processed = one.event_mouse_button_up(x - one.rect.x, y - one.rect.y);
+				else
+					processed = two.event_mouse_button_up(x - two.rect.x, y - two.rect.y);
+			}
+			else
+			{
+				if (x < this->rect.w/2)
+					processed = one.event_mouse_button_up(x - one.rect.x, y - one.rect.y);
+				else
+					processed = two.event_mouse_button_up(x - two.rect.x, y - two.rect.y);
+			}
+			if (processed)
+				event_redraw();
+			return processed;
 		}
 	};
 
@@ -315,7 +369,8 @@ struct OW
 		{
 			if (pressed)
 				return false;
-			pressed = true;
+			pressed = true; 
+			this->border_is_sunken = true;
 			this->take_focus();
 			event_redraw();
 			return true;
@@ -325,6 +380,7 @@ struct OW
 			if ( ! pressed)
 				return false;
 			pressed = false;
+			this->border_is_sunken = false;
 			event_clicked();
 			event_redraw();
 			return true;
@@ -390,8 +446,9 @@ struct OW
 		virtual bool event_mouse_button_down([[maybe_unused]]int x, [[maybe_unused]]int y) override
 		{
 			this->take_focus();
-			char_pos = caption.get_pos_at(x - this->rect.x - text_x);
+			char_pos = caption.get_pos_at(x - text_x);
 			cursor_x = text_x + caption.get_char_x(char_pos);
+			event_redraw();
 			return true;
 		}
 
@@ -510,36 +567,30 @@ struct OW
 		virtual bool event_mouse_button_down(int x, int y)
 		{
 			Widget * widget = this->container.find_widget_at(x, y);
-			if (widget) {
-				if (widget->event_mouse_button_down(x, y))
-				{
-					this->event_redraw();
-					return true;
-				}
+			if (widget && widget->event_mouse_button_down(x-widget->rect.x, y-widget->rect.y))
+			{
+				this->event_redraw();
+				return true;
 			}
 			return false;
 		}
 		virtual bool event_mouse_button_up(int x, int y)
 		{
 			Widget * widget = this->container.find_widget_at(x, y);
-			if (widget) {
-				if (widget->event_mouse_button_up(x, y))
-				{
-					this->event_redraw();
-					return true;
-				}
+			if (widget && widget->event_mouse_button_up(x-widget->rect.x, y-widget->rect.y))
+			{
+				this->event_redraw();
+				return true;
 			}
 			return false;
 		}
 		virtual bool event_key_down(int key)
 		{
 			Widget * widget = this->container.get_focused();
-			if (widget) {
-				if (widget->event_key_down(key))
-				{
-					this->event_redraw();
-					return true;
-				}
+			if (widget && widget->event_key_down(key))
+			{
+				this->event_redraw();
+				return true;
 			}
 			// not processed by a widget
 			if (key == SDLK_TAB)
@@ -554,12 +605,10 @@ struct OW
 		virtual bool event_key_up(int key)
 		{
 			Widget * widget = this->container.get_focused();
-			if (widget) {
-				if (widget->event_key_up(key))
-				{
-					this->event_redraw();
-					return true;
-				}
+			if (widget && widget->event_key_up(key))
+			{
+				this->event_redraw();
+				return true;
 			}
 			return false;
 		}
