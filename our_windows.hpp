@@ -6,7 +6,8 @@
 
 enum class widget_change_t
 {
-	resized = 0,
+	all = 0,
+	resized,
 	moved,
 };
 
@@ -16,6 +17,7 @@ struct OW
 {
 
 	struct Window;
+	struct Container;
 
 	struct Rect
 	{
@@ -28,19 +30,40 @@ struct OW
 		Rect rect;
 		WSW::DrawableArea_t drawable_area;
 
+		int border_width = 1;
+		bool border_is_sunken = false;
+		int border_color_light = 220;
+		int border_color_dark  =  64;
+		int border_color_black =   0;
+
+		int padding = 2;
+
 		Widget(Window * window, Rect r)
 			: parent_window(window)
 			, rect(r)
 			, drawable_area(window, r.w, r.h)
 		{}
 
+		int w() const { return this->rect.w; }
+		int h() const { return this->rect.h; }
+
 		bool has_focus()
 		{
-			return parent_window->layout_container->has_focus(this);
+			return parent_window->container.has_focus(this);
 		}
 		void take_focus()
 		{
-			parent_window->layout_container->set_focus(this);
+			parent_window->container.set_focus(this);
+		}
+
+		virtual void draw_border()
+		{
+			if (border_width == 0)
+				return;
+			if (has_focus())
+				this->drawable_area.draw_3d_rect(0, 0, rect.w-1, rect.h-1, border_color_black, border_color_black, border_is_sunken);
+			else
+				this->drawable_area.draw_3d_rect(0, 0, rect.w-1, rect.h-1, border_color_light, border_color_dark, border_is_sunken);
 		}
 
 		virtual void pack() {}
@@ -63,35 +86,52 @@ struct OW
 		virtual bool event_key_up  ([[maybe_unused]]int key) { return false; }
 	};
 	
-	struct LayoutContainer : monitor<widget_change_t>
+	struct Layout
 	{
-		Window * parent_window;
-		std::vector<Widget*> widgets;
-		DrawableArea drawable_area;
-		unsigned int focus_idx = 0;
-
-		LayoutContainer(Window * window, int width, int height)
-			: parent_window(window)
-			, drawable_area(window, width, height)
+		virtual void rearrange_widgets(const Container &, std::vector<Widget*> &, [[maybe_unused]]int w, [[maybe_unused]]int h)
 		{}
-		~LayoutContainer()
+	};
+
+	struct Container : Widget, monitor<widget_change_t>
+	{
+		std::vector<Widget*> widgets;
+		unsigned int focus_idx = 0;
+		std::unique_ptr<Layout> layout;
+
+		Container(Window * window, Rect r)
+			: Widget(window, r)
+			, layout(std::make_unique<Layout>())
+		{
+			this->border_width = 0;
+		}
+		~Container()
 		{
 			for (Widget * widget : this->widgets)
 				widget->remove_monitor(this);
+		}
+
+		void set_layout(std::unique_ptr<Layout> new_layout)
+		{
+			layout = std::move(new_layout);
+			layout->rearrange_widgets(*this, widgets, this->rect.w, this->rect.h);
+			event_redraw();
 		}
 
 		void add_widget(Widget * widget)
 		{
 			widgets.push_back(widget);
 			widget->add_monitor(this);
+			layout->rearrange_widgets(*this, widgets, this->rect.w, this->rect.h);
+			event_redraw();
 		}
 
-		int w() const { return drawable_area.w; }
-		int h() const { return drawable_area.h; }
-
-		virtual void notify(monitorable<widget_change_t> * widget, widget_change_t & event) override
+		virtual void notify(monitorable<widget_change_t> *, widget_change_t & ev) override
 		{
-			// pass
+			if (ev == widget_change_t::resized)
+			{
+				layout->rearrange_widgets(*this, widgets, this->rect.w, this->rect.h);
+				event_redraw();
+			}
 		}
 
 		Widget * get_focused()
@@ -122,11 +162,12 @@ struct OW
 
 		virtual void event_redraw()
 		{
-			drawable_area.fill(196,196,196);
+			this->drawable_area.fill(196,196,196);
 			for (Widget *  widget : widgets) {
 				widget->event_redraw();
-				drawable_area.copy_from(widget->drawable_area, widget->rect.x, widget->rect.y);
+				this->drawable_area.copy_from(widget->drawable_area, widget->rect.x, widget->rect.y);
 			}
+			this->draw_border();
 		}
 
 		Widget * find_widget_at(int x, int y)
@@ -169,68 +210,75 @@ struct OW
 	struct Splitter : Widget
 	{
 		int thickness = 6;
-		int border = 1;
 		bool is_horizontal;
 		int split_position;
-		std::unique_ptr<LayoutContainer> one, two;
+		Container one, two;
 
 		Splitter(Window * parent_window, Rect r, bool is_horizontal)
 			: Widget(parent_window, r)
 			, is_horizontal(is_horizontal)
 			, split_position((is_horizontal?r.h:r.w)/2)
-			, one(std::make_unique<LayoutContainer>(parent_window, (r.w-4*border-thickness) / (is_horizontal?1:2), (r.h-4*border-thickness) / (is_horizontal?2:1)))
-			, two(std::make_unique<LayoutContainer>(parent_window, (r.w-4*border-thickness) / (is_horizontal?1:2), (r.h-4*border-thickness) / (is_horizontal?2:1)))
-		{}
+			, one(parent_window, Rect{                                  0,                                   0, is_horizontal?r.w:((r.w-thickness)/2), is_horizontal?((r.h-thickness)/2):r.h})
+			, two(parent_window, Rect{is_horizontal?0:((r.w+thickness)/2), is_horizontal?((r.h+thickness)/2):0, is_horizontal?r.w:((r.w-thickness)/2), is_horizontal?((r.h-thickness)/2):r.h})
+		{
+			one.border_width = 1;
+			two.border_width = 1;
+			one.border_is_sunken = true;
+			two.border_is_sunken = true;
+			this->border_width = 0;
+		}
 
 		virtual bool focusable() override { return false; }
 		virtual void event_redraw() override
 		{
-			one->event_redraw();
-			two->event_redraw();
+			one.event_redraw();
+			two.event_redraw();
 
-			int color_light = 220;
-			int color_dark  = 64;
-
+			this->drawable_area.copy_from(one.drawable_area, 0, 0);
 			if (is_horizontal)
-			{
-				this->drawable_area.draw_3d_rect(0,                            0, this->rect.w, one->h()+2*border, color_light, color_dark, true);
-				this->drawable_area.draw_3d_rect(0, split_position + thickness/2, this->rect.w, two->h()+2*border, color_light, color_dark, true);
-				this->drawable_area.copy_from(one->drawable_area, border, border);
-				this->drawable_area.copy_from(two->drawable_area, border, border + one->h() + border + thickness + border);
-			}
+				this->drawable_area.copy_from(two.drawable_area, 0, (this->rect.h+thickness)/2);
 			else
-			{
-				this->drawable_area.draw_3d_rect(split_position + thickness/2, 0, one->w()+2*border, this->rect.h, color_light, color_dark, true);
-				this->drawable_area.draw_3d_rect(                           0, 0, two->w()+2*border, this->rect.h, color_light, color_dark, true);
-				this->drawable_area.copy_from(one->drawable_area, border, border);
-				this->drawable_area.copy_from(two->drawable_area, border + one->w() + border + thickness + border, border);
-			}
-		}
-
-		template<typename L>
-		void set_layout_type(std::unique_ptr<LayoutContainer> & layout_container)
-		{
-			layout_container = std::make_unique<L>(std::move(*layout_container));
-			event_redraw();
+				this->drawable_area.copy_from(two.drawable_area, (this->rect.w+thickness)/2, 0);
 		}
 
 		/*virtual void pack() 
 		{
 			this->set_size(caption.get_size());
 		}*/
+
+		virtual bool event_mouse_button_down(int x, int y)
+		{
+			x -= this->rect.x;
+			y -= this->rect.y;
+
+			if (is_horizontal)
+			{
+				if (y < this->rect.h/2)
+					return one.event_mouse_button_down(x, y);
+				else
+					return two.event_mouse_button_down(x, y);
+			}
+			else
+			{
+				if (x < this->rect.w/2)
+					return one.event_mouse_button_down(x, y);
+				else
+					return two.event_mouse_button_down(x, y);
+			}
+		}
 	};
 
 	struct Button : Widget
 	{
 		bool pressed = false;
 		Text caption;
-		int padding = 2;
-		int border = 1;
 
 		Button(Window * parent_window, std::string t, Rect r)
 			: Widget(parent_window, r)
 			, caption(t, parent_window)
-		{}
+		{
+			this->border_is_sunken = false;
+		}
 
 		void set_text(std::string s)
 		{
@@ -240,26 +288,22 @@ struct OW
 
 		virtual void pack()
 		{
-			this->set_size({2*border + 2*padding + caption.w, 2*border + 2*padding + caption.h});
+			this->set_size({2*this->border_width + 2*this->padding + caption.w, 2*this->border_width + 2*this->padding + caption.h});
 		}
 
 		virtual void event_redraw() override
-		{
+		{			
 			int color_bg = 192;
-			int color_light = 220;
-			int color_dark  = 64;
 			int offset = 0;
 			if (pressed)
 			{
 				offset = 1;
 			}
-			if (this->has_focus())
-				color_light = color_dark = 0;
 
 			// Background
 			this->drawable_area.fill(color_bg, color_bg, color_bg);
 			// Border
-			this->drawable_area.draw_3d_rect(0, 0, this->rect.w, this->rect.h, color_light, color_dark, pressed);
+			this->draw_border();
 			// Text
 			caption.render();
 			int x = (this->rect.w - caption.w) / 2 + offset;
@@ -293,8 +337,6 @@ struct OW
 	struct TextEdit : Widget
 	{
 		Text caption;
-		int padding = 5;
-		int border = 1;
 		int text_x;
 		int text_y;	
 		unsigned int char_pos = 0;
@@ -304,6 +346,7 @@ struct OW
 			: Widget(parent_window, r)
 			, caption(t, parent_window)
 		{
+			this->padding = 5;
 			event_redraw();
 		}
 
@@ -315,7 +358,7 @@ struct OW
 
 		virtual void pack()
 		{
-			this->set_size({2*border + 2*padding + caption.w, 2*border + 2*padding + caption.h});
+			this->set_size({2*this->border_width + 2*this->padding + caption.w, 2*this->border_width + 2*this->padding + caption.h});
 		}
 
 		virtual void event_redraw() override
@@ -333,7 +376,7 @@ struct OW
 			this->drawable_area.draw_3d_rect(0, 0, this->rect.w, this->rect.h, color_light, color_dark, true);
 			// Text
 			//caption.render();
-			text_x = padding;
+			text_x = this->padding;
 			text_y = (this->rect.h - caption.h) / 2;
 			this->drawable_area.copy_from(caption, text_x, text_y);
 
@@ -428,63 +471,17 @@ struct OW
 	};
 
 
-	struct VLayout : LayoutContainer
+	struct VLayout : Layout
 	{
-		int next_y = 0;
-
-		VLayout(Window * w, Rect r)
-			: LayoutContainer(w, r)
-		{}
-		VLayout(LayoutContainer && other)
-			: LayoutContainer(other.parent_window, other.drawable_area.w, other.drawable_area.h)
-		{
-			for (Widget * widget : other.widgets)
-			{
-				add_widget(widget);
-				widget->add_monitor(this);
-			}
-		}
-
-		void add_widget(Widget * widget)
-		{
-			widget->rect.y = next_y;
-			next_y += widget->rect.h;
-			widget->rect.x = (this->drawable_area.w - widget->rect.w) / 2;
-			this->widgets.push_back(widget);
-			widget->add_monitor(this);
-		}
-
-		virtual void notify(monitorable<widget_change_t> * widget, widget_change_t & event) override
-		{
-			reorganize_widgets();
-		}
-		void reorganize_widgets()
+		virtual void rearrange_widgets(const Container & container, std::vector<Widget*> & widgets, [[maybe_unused]]int w, [[maybe_unused]]int h) override
 		{
 			// reorganize widgets
-			next_y = 0;
-			for (Widget * widget : this->widgets)
+			int next_y = container.border_width + container.padding;
+			for (Widget * widget : widgets)
 			{
 				widget->rect.y = next_y;
 				next_y += widget->rect.h;
-				widget->rect.x = (this->drawable_area.w - widget->rect.w) / 2;
-			}
-		}
-
-		Widget * find_widget_at(int x, int y)
-		{
-			for (Widget * widget : this->widgets)
-				if (   x >= widget->rect.x && x < widget->rect.x + widget->rect.w
-					&& y >= widget->rect.y && y < widget->rect.y + widget->rect.h )
-					return &*widget;
-			return nullptr;
-		}
-
-		void event_redraw()
-		{
-			this->drawable_area.fill(196,196,196);
-			for (Widget *  widget : this->widgets) {
-				widget->event_redraw();
-				this->drawable_area.copy_from(widget->drawable_area, widget->rect.x, widget->rect.y);
+				widget->rect.x = (w - widget->rect.w) / 2;
 			}
 		}
 	};
@@ -496,30 +493,23 @@ struct OW
 		std::unique_ptr<Layout> layout;
 		DrawableArea drawable_area;
 		*/
-		std::unique_ptr<LayoutContainer> layout_container;
+		Container container;
 
 		Window(const char * title, int width, int height)
 			: WSW::Window_t(title, width, height)
-			, layout_container(std::make_unique<LayoutContainer>(this, width, height))
+			, container(this, Rect{0, 0, width, height})
 		{}
 
 		virtual void event_redraw() override
 		{
-			layout_container->event_redraw();
-			layout_container->drawable_area.refresh_window();
+			container.event_redraw();
+			container.drawable_area.refresh_window();
 			WSW::Window_t::present();
 		}	
 
-		template<typename L>
-		void set_layout_type()
-		{
-			layout_container = std::make_unique<L>(std::move(*layout_container));
-			event_redraw();
-		}
-
 		virtual bool event_mouse_button_down(int x, int y)
 		{
-			Widget * widget = this->layout_container->find_widget_at(x, y);
+			Widget * widget = this->container.find_widget_at(x, y);
 			if (widget) {
 				if (widget->event_mouse_button_down(x, y))
 				{
@@ -531,7 +521,7 @@ struct OW
 		}
 		virtual bool event_mouse_button_up(int x, int y)
 		{
-			Widget * widget = this->layout_container->find_widget_at(x, y);
+			Widget * widget = this->container.find_widget_at(x, y);
 			if (widget) {
 				if (widget->event_mouse_button_up(x, y))
 				{
@@ -543,7 +533,7 @@ struct OW
 		}
 		virtual bool event_key_down(int key)
 		{
-			Widget * widget = this->layout_container->get_focused();
+			Widget * widget = this->container.get_focused();
 			if (widget) {
 				if (widget->event_key_down(key))
 				{
@@ -554,7 +544,7 @@ struct OW
 			// not processed by a widget
 			if (key == SDLK_TAB)
 			{
-				bool handled = this->layout_container->focus_next();
+				bool handled = this->container.focus_next();
 				this->event_redraw();
 				return handled;
 			}
@@ -563,7 +553,7 @@ struct OW
 		}
 		virtual bool event_key_up(int key)
 		{
-			Widget * widget = this->layout_container->get_focused();
+			Widget * widget = this->container.get_focused();
 			if (widget) {
 				if (widget->event_key_up(key))
 				{

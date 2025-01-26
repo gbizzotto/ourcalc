@@ -331,18 +331,15 @@ struct DrawableArea
 
 		SDL_SetRenderTarget(renderer, texture);
 	    SDL_SetRenderDrawColor(renderer, r, g, b, 255);
+	    SDL_RenderFillRect(renderer, &rect);
 		SDL_SetRenderTarget(renderer, NULL);
 	}
 	void draw_3d_rect(int x, int y, int w, int h, int light, int dark, bool sunken)
 	{
-	    SDL_Rect rect;
-	    rect.x = x;
-	    rect.y = y;
-	    rect.w = w;
-	    rect.h = h;
-
-	    if (!sunken)
+	    if ( ! sunken)
+	    {
 	    	std::swap(dark, light);
+	    }
 
 		SDL_SetRenderTarget(renderer, texture);
 	    SDL_SetRenderDrawColor(renderer, dark, dark, dark, 255);
