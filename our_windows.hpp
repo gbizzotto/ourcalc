@@ -27,7 +27,7 @@ struct OW
 
 	struct Widget : monitorable<widget_change_t>
 	{
-		Window * parent_window = nullptr;
+		Container * parent_container;
 		Rect rect;
 		WSW::DrawableArea_t drawable_area;
 
@@ -39,9 +39,16 @@ struct OW
 
 		int padding = 2;
 
-		Widget(Window * window, Rect r)
-			: parent_window(window)
+		Widget(Container * container, Rect r)
+			: parent_container(container)
 			, rect(r)
+			, drawable_area(container->parent_window, r.w, r.h)
+		{
+			if (parent_container)
+				parent_container->add_widget(this, false);
+		}
+		Widget(Window * window, Rect r)
+			: rect(r)
 			, drawable_area(window, r.w, r.h)
 		{}
 
@@ -50,11 +57,15 @@ struct OW
 
 		bool has_focus()
 		{
-			return parent_window->container.has_focus(this);
+			if (parent_container)
+				return parent_container->has_focus(this);
+			return
+				false;
 		}
 		void take_focus()
 		{
-			parent_window->container.set_focus(this);
+			if (parent_container)
+				parent_container->set_focus(this);
 		}
 
 		virtual void draw_border()
@@ -95,12 +106,21 @@ struct OW
 
 	struct Container : Widget, monitor<widget_change_t>
 	{
+		Window * parent_window;
 		std::vector<Widget*> widgets;
 		unsigned int focus_idx = 0;
 		std::unique_ptr<Layout> layout;
 
 		Container(Window * window, Rect r)
 			: Widget(window, r)
+			, parent_window(window)
+			, layout(std::make_unique<Layout>())
+		{
+			this->border_width = 0;
+		}
+		Container(Container * container, Rect r)
+			: Widget(container, r)
+			, parent_window(container->parent_window)
 			, layout(std::make_unique<Layout>())
 		{
 			this->border_width = 0;
@@ -118,12 +138,13 @@ struct OW
 			event_redraw();
 		}
 
-		void add_widget(Widget * widget)
+		void add_widget(Widget * widget, bool do_redraw = false)
 		{
 			widgets.push_back(widget);
 			widget->add_monitor(this);
 			layout->rearrange_widgets(*this, widgets, this->rect.w, this->rect.h);
-			event_redraw();
+			if (do_redraw)
+				event_redraw();
 		}
 
 		virtual void notify(monitorable<widget_change_t> *, widget_change_t & ev) override
@@ -157,8 +178,10 @@ struct OW
 				if (widgets[i] == widg)
 				{
 					focus_idx = i;
-					break;
+					return;
 				}
+			focus_idx = 0;
+
 		}
 
 		virtual void event_redraw()
@@ -220,9 +243,9 @@ struct OW
 	{
 		Text caption;
 
-		Label(Window * parent_window, std::string text, Rect r)
-			: Widget(parent_window, r)
-			, caption(std::move(text), parent_window)
+		Label(Container * container, std::string text, Rect r)
+			: Widget(container, r)
+			, caption(std::move(text), container->parent_window)
 		{}
 
 		virtual bool focusable() override { return false; }
@@ -246,12 +269,12 @@ struct OW
 		int split_position;
 		Container one, two;
 
-		Splitter(Window * parent_window, Rect r, bool is_horizontal)
-			: Widget(parent_window, r)
+		Splitter(Container * container, Rect r, bool is_horizontal)
+			: Widget(container, r)
 			, is_horizontal(is_horizontal)
 			, split_position((is_horizontal?r.h:r.w)/2)
-			, one(parent_window, Rect{                                  0,                                   0, is_horizontal?r.w:((r.w-thickness)/2), is_horizontal?((r.h-thickness)/2):r.h})
-			, two(parent_window, Rect{is_horizontal?0:((r.w+thickness)/2), is_horizontal?((r.h+thickness)/2):0, is_horizontal?r.w:((r.w-thickness)/2), is_horizontal?((r.h-thickness)/2):r.h})
+			, one(container->parent_window, Rect{                                  0,                                   0, is_horizontal?r.w:((r.w-thickness)/2), is_horizontal?((r.h-thickness)/2):r.h})
+			, two(container->parent_window, Rect{is_horizontal?0:((r.w+thickness)/2), is_horizontal?((r.h+thickness)/2):0, is_horizontal?r.w:((r.w-thickness)/2), is_horizontal?((r.h-thickness)/2):r.h})
 		{
 			one.border_width = 1;
 			two.border_width = 1;
@@ -327,9 +350,9 @@ struct OW
 		bool pressed = false;
 		Text caption;
 
-		Button(Window * parent_window, std::string t, Rect r)
-			: Widget(parent_window, r)
-			, caption(t, parent_window)
+		Button(Container * container, std::string t, Rect r)
+			: Widget(container, r)
+			, caption(t, container->parent_window)
 		{
 			this->border_is_sunken = false;
 		}
@@ -365,7 +388,7 @@ struct OW
 			this->drawable_area.copy_from(caption, x, y);
 		}
 
-		virtual bool event_mouse_button_down([[maybe_unused]]int x, [[maybe_unused]]int y)
+		virtual bool event_mouse_button_down([[maybe_unused]]int x, [[maybe_unused]]int y) override
 		{
 			if (pressed)
 				return false;
@@ -375,7 +398,7 @@ struct OW
 			event_redraw();
 			return true;
 		}
-		virtual bool event_mouse_button_up  ([[maybe_unused]]int x, [[maybe_unused]]int y)
+		virtual bool event_mouse_button_up  ([[maybe_unused]]int x, [[maybe_unused]]int y) override
 		{
 			if ( ! pressed)
 				return false;
@@ -398,12 +421,11 @@ struct OW
 		unsigned int char_pos = 0;
 		unsigned int cursor_x = 0;
 	
-		TextEdit(Window * parent_window, std::string t, Rect r)
-			: Widget(parent_window, r)
-			, caption(t, parent_window)
+		TextEdit(Container * container, std::string t, Rect r)
+			: Widget(container, r)
+			, caption(t, container->parent_window)
 		{
 			this->padding = 5;
-			event_redraw();
 		}
 
 		void set_text(std::string s)

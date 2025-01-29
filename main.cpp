@@ -9,8 +9,8 @@ struct my_button_t : OurW::Button
 {
 	OurW::Button * butt1;
 
-	my_button_t(OurW::Window * parent_window, std::string t, OurW::Rect r)
-		: OurW::Button(parent_window, t, r)
+	my_button_t(OurW::Container * container, std::string t, OurW::Rect r)
+		: OurW::Button(container, t, r)
 	{}
 
 	void set_target(OurW::Button & b)
@@ -27,30 +27,30 @@ struct my_button_t : OurW::Button
 struct my_window : OurW::Window
 {
 	using Super = typename OurW::Window;
+	OurW::Splitter split1;
 	OurW::Button butt1;
 	my_button_t  butt2;
 	OurW::TextEdit text1;
 	OurW::Label label1;
-	OurW::Splitter split1;
 
 	my_window(const char * title, int width, int height)
 		: OurW::Window(title, width, height)
-		, butt1(this, "button 1", {10, 50,200,40})
-		, butt2(this, "button 2", {10,150,200,40})
-		, text1(this, "asdf", {10,200,200,40})
-		, label1(this, "gxb", {10,250,200,40})
-		, split1(this, {200, 200, 400, 400}, false)
+		, split1(&this->container, {200, 200, 400, 400}, false)
+		, butt1 (&split1.one, "button 1", {10, 50,200,40})
+		, butt2 (&split1.one, "button 2", {10,150,200,40})
+		, text1 (&split1.two, "asdf", {10,200,200,40})
+		, label1(&split1.two, "gxb", {10,250,200,40})
 	{
 		butt2.set_target(butt1);
 
-		split1.one.add_widget(&butt1);
-		split1.one.add_widget(&butt2);
-		split1.two.add_widget(&text1);
-		split1.two.add_widget(&label1);
+		//split1.one.add_widget(&butt1);
+		//split1.one.add_widget(&butt2);
+		//split1.two.add_widget(&text1);
+		//split1.two.add_widget(&label1);
 
 		split1.two.set_layout(std::make_unique<OurW::VLayout>());
 
-		this->container.add_widget(&split1);
+		//this->container.add_widget(&split1, true);
 
 		butt1.pack();
 		text1.pack();
