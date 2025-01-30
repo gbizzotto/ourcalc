@@ -50,7 +50,7 @@ struct Window
 		SDL_DestroyWindow(sdl_window);
 	}
 
-	virtual void event_redraw() {}
+	virtual void redraw() {}
 
 	virtual bool event_mouse_button_down([[maybe_unused]]int x, [[maybe_unused]]int y) { return false; }
 	virtual bool event_mouse_button_up  ([[maybe_unused]]int x, [[maybe_unused]]int y) { return false; }
@@ -414,7 +414,7 @@ struct SDL
 								{
 									//case SDL_WINDOWEVENT_SHOWN:
 									case SDL_WINDOWEVENT_EXPOSED:
-										window->event_redraw();
+										window->redraw();
 										break;
 									case SDL_WINDOWEVENT_MOVED:
 										break;

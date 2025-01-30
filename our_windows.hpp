@@ -86,11 +86,11 @@ struct OW
 			rect.w = std::get<0>(size);
 			rect.h = std::get<1>(size);
 			drawable_area.set_size(size);
-			event_redraw();
+			redraw();
 			notify_monitors(widget_change_t::resized);
 		}
 		virtual bool focusable() { return true; }
-		virtual void event_redraw() {}
+		virtual void redraw() {}
 
 		virtual bool event_mouse_button_down([[maybe_unused]]int x, [[maybe_unused]]int y) { return false; }
 		virtual bool event_mouse_button_up  ([[maybe_unused]]int x, [[maybe_unused]]int y) { return false; }
@@ -135,7 +135,7 @@ struct OW
 		{
 			layout = std::move(new_layout);
 			layout->rearrange_widgets(*this, widgets, this->rect.w, this->rect.h);
-			event_redraw();
+			redraw();
 		}
 
 		void add_widget(Widget * widget, bool do_redraw = false)
@@ -144,7 +144,7 @@ struct OW
 			widget->add_monitor(this);
 			layout->rearrange_widgets(*this, widgets, this->rect.w, this->rect.h);
 			if (do_redraw)
-				event_redraw();
+				redraw();
 		}
 
 		virtual void notify(monitorable<widget_change_t> *, widget_change_t & ev) override
@@ -152,7 +152,7 @@ struct OW
 			if (ev == widget_change_t::resized)
 			{
 				layout->rearrange_widgets(*this, widgets, this->rect.w, this->rect.h);
-				event_redraw();
+				redraw();
 			}
 		}
 
@@ -184,11 +184,11 @@ struct OW
 
 		}
 
-		virtual void event_redraw()
+		virtual void redraw()
 		{
 			this->drawable_area.fill(196,196,196);
 			for (Widget *  widget : widgets) {
-				widget->event_redraw();
+				widget->redraw();
 				this->drawable_area.copy_from(widget->drawable_area, widget->rect.x, widget->rect.y);
 			}
 			this->draw_border();
@@ -212,7 +212,7 @@ struct OW
 			}
 			else if (target->event_mouse_button_down(x-target->rect.x, y-target->rect.y))
 			{
-				event_redraw();
+				redraw();
 				return true;
 			}
 			else
@@ -227,7 +227,7 @@ struct OW
 			}
 			else if (target->event_mouse_button_up(x-target->rect.x, y-target->rect.y))
 			{
-				event_redraw();
+				redraw();
 				return true;
 			}
 			else
@@ -249,7 +249,7 @@ struct OW
 		{}
 
 		virtual bool focusable() override { return false; }
-		virtual void event_redraw() override
+		virtual void redraw() override
 		{
 			caption.render();
 			int y = (this->rect.h - caption.h) / 2;
@@ -284,10 +284,10 @@ struct OW
 		}
 
 		virtual bool focusable() override { return false; }
-		virtual void event_redraw() override
+		virtual void redraw() override
 		{
-			one.event_redraw();
-			two.event_redraw();
+			one.redraw();
+			two.redraw();
 
 			this->drawable_area.copy_from(one.drawable_area, 0, 0);
 			if (is_horizontal)
@@ -319,7 +319,7 @@ struct OW
 					processed = two.event_mouse_button_down(x - two.rect.x, y - two.rect.y);
 			}
 			if (processed)
-				event_redraw();
+				redraw();
 			return processed;
 		}
 		virtual bool event_mouse_button_up(int x, int y) override
@@ -340,7 +340,7 @@ struct OW
 					processed = two.event_mouse_button_up(x - two.rect.x, y - two.rect.y);
 			}
 			if (processed)
-				event_redraw();
+				redraw();
 			return processed;
 		}
 	};
@@ -360,7 +360,7 @@ struct OW
 		void set_text(std::string s)
 		{
 			caption.set_text(s);
-			event_redraw();
+			redraw();
 		}
 
 		virtual void pack()
@@ -368,7 +368,7 @@ struct OW
 			this->set_size({2*this->border_width + 2*this->padding + caption.w, 2*this->border_width + 2*this->padding + caption.h});
 		}
 
-		virtual void event_redraw() override
+		virtual void redraw() override
 		{			
 			int color_bg = 192;
 			int offset = 0;
@@ -395,7 +395,7 @@ struct OW
 			pressed = true; 
 			this->border_is_sunken = true;
 			this->take_focus();
-			event_redraw();
+			redraw();
 			return true;
 		}
 		virtual bool event_mouse_button_up  ([[maybe_unused]]int x, [[maybe_unused]]int y) override
@@ -405,7 +405,7 @@ struct OW
 			pressed = false;
 			this->border_is_sunken = false;
 			event_clicked();
-			event_redraw();
+			redraw();
 			return true;
 		}
 
@@ -431,7 +431,7 @@ struct OW
 		void set_text(std::string s)
 		{
 			caption.set_text(s);
-			event_redraw();
+			redraw();
 		}
 
 		virtual void pack()
@@ -439,7 +439,7 @@ struct OW
 			this->set_size({2*this->border_width + 2*this->padding + caption.w, 2*this->border_width + 2*this->padding + caption.h});
 		}
 
-		virtual void event_redraw() override
+		virtual void redraw() override
 		{
 			int color_bg = 255;
 			int color_light = 220;
@@ -470,7 +470,7 @@ struct OW
 			this->take_focus();
 			char_pos = caption.get_pos_at(x - text_x);
 			cursor_x = text_x + caption.get_char_x(char_pos);
-			event_redraw();
+			redraw();
 			return true;
 		}
 
@@ -542,7 +542,7 @@ struct OW
 
 			if (caption_changed || cursor_changed)
 			{
-				event_redraw();
+				redraw();
 				return true;
 			}
 			return false;
@@ -579,9 +579,9 @@ struct OW
 			, container(this, Rect{0, 0, width, height})
 		{}
 
-		virtual void event_redraw() override
+		virtual void redraw() override
 		{
-			container.event_redraw();
+			container.redraw();
 			container.drawable_area.refresh_window();
 			WSW::Window_t::present();
 		}	
@@ -591,7 +591,7 @@ struct OW
 			Widget * widget = this->container.find_widget_at(x, y);
 			if (widget && widget->event_mouse_button_down(x-widget->rect.x, y-widget->rect.y))
 			{
-				this->event_redraw();
+				this->redraw();
 				return true;
 			}
 			return false;
@@ -601,7 +601,7 @@ struct OW
 			Widget * widget = this->container.find_widget_at(x, y);
 			if (widget && widget->event_mouse_button_up(x-widget->rect.x, y-widget->rect.y))
 			{
-				this->event_redraw();
+				this->redraw();
 				return true;
 			}
 			return false;
@@ -611,14 +611,14 @@ struct OW
 			Widget * widget = this->container.get_focused();
 			if (widget && widget->event_key_down(key))
 			{
-				this->event_redraw();
+				this->redraw();
 				return true;
 			}
 			// not processed by a widget
 			if (key == SDLK_TAB)
 			{
 				bool handled = this->container.focus_next();
-				this->event_redraw();
+				this->redraw();
 				return handled;
 			}
 
@@ -629,7 +629,7 @@ struct OW
 			Widget * widget = this->container.get_focused();
 			if (widget && widget->event_key_up(key))
 			{
-				this->event_redraw();
+				this->redraw();
 				return true;
 			}
 			return false;
@@ -644,7 +644,7 @@ struct OW
 		Window & make_window(const char * title="", int width=1280, int height=1024)
 		{
 			auto & w = window_system_wrapper.template make_window<W>(title, width, height);
-			w.event_redraw();
+			w.redraw();
 			return w;
 		}
 
