@@ -9,6 +9,9 @@
 #include <SDL2/SDL_ttf.h>
 #include <SDL2/SDL_image.h>
 
+#include "events.hpp"
+#include "util.hpp"
+
 struct DrawableArea;
 
 struct Window
@@ -35,7 +38,7 @@ struct Window
 		if ( ! winSurface)
 			throw;
 
-		renderer = SDL_CreateRenderer(sdl_window, -1, SDL_RENDERER_SOFTWARE);
+		renderer = SDL_CreateRenderer(sdl_window, -1, SDL_RENDERER_ACCELERATED);
 		if ( ! renderer)
 			throw;
 
@@ -50,12 +53,15 @@ struct Window
 		SDL_DestroyWindow(sdl_window);
 	}
 
-	virtual void redraw() {}
+	virtual void _redraw() {}
 
+	virtual bool handle_event(event) { return false; }
+	/*
 	virtual bool event_mouse_button_down([[maybe_unused]]int x, [[maybe_unused]]int y) { return false; }
 	virtual bool event_mouse_button_up  ([[maybe_unused]]int x, [[maybe_unused]]int y) { return false; }
 	virtual bool event_key_down([[maybe_unused]]int key) { return false; }
 	virtual bool event_key_up  ([[maybe_unused]]int key) { return false; }
+	*/
 
 	virtual void present()
 	{
@@ -145,7 +151,14 @@ cleanup:
     SDL_DestroyTexture(ren_tex);
 }
 
-struct Text
+
+enum class text_change_t
+{
+	any = 0,
+	resized,
+	text_changed,
+};
+struct Text : monitorable<text_change_t>
 {
 	Window * window = nullptr;
 	SDL_Surface* message_surface = nullptr;
@@ -175,6 +188,7 @@ struct Text
 		text = s;
 		render();
 		calculate_char_pos();
+		notify_monitors(text_change_t::text_changed);
 	}
 
 	void calculate_char_pos()
@@ -414,7 +428,7 @@ struct SDL
 								{
 									//case SDL_WINDOWEVENT_SHOWN:
 									case SDL_WINDOWEVENT_EXPOSED:
-										window->redraw();
+										window->handle_event(event{event_type::window_shown, 0});
 										break;
 									case SDL_WINDOWEVENT_MOVED:
 										break;
@@ -426,8 +440,27 @@ struct SDL
 						break;
 					}
 					case SDL_MOUSEMOTION:
-						// etc.
+					{
+						SDL_MouseMotionEvent & ev = (SDL_MouseMotionEvent &)e;
+
+						SDL_Window * sdl_window = SDL_GetWindowFromID(ev.windowID);
+						if ( ! sdl_window)
+							break;
+						for(auto & window : windows)
+							if (window->sdl_window == sdl_window)
+							{
+								event my_event{event_type::mouse, 0};
+								my_event.data.mouse.pressed  = false;
+								my_event.data.mouse.released = false;
+								my_event.data.mouse.button = 0;
+								my_event.data.mouse.x = ev.x;
+								my_event.data.mouse.y = ev.y;
+								window->handle_event(my_event);
+								break;
+							}
+
 						break;
+					}
 					case SDL_MOUSEBUTTONDOWN:
 					case SDL_MOUSEBUTTONUP:
 					{
@@ -438,10 +471,13 @@ struct SDL
 						for(auto & window : windows)
 							if (window->sdl_window == sdl_window)
 							{
-								if (e.type == SDL_MOUSEBUTTONDOWN)
-									window->event_mouse_button_down(ev.x, ev.y);
-								else if (e.type == SDL_MOUSEBUTTONUP)
-									window->event_mouse_button_up(ev.x, ev.y);
+								event my_event{event_type::mouse, 0};
+								my_event.data.mouse.pressed  = e.type == SDL_MOUSEBUTTONDOWN;
+								my_event.data.mouse.released = e.type == SDL_MOUSEBUTTONUP;
+								my_event.data.mouse.button = ev.button;
+								my_event.data.mouse.x = ev.x;
+								my_event.data.mouse.y = ev.y;
+								window->handle_event(my_event);
 								break;
 							}
 						break;
@@ -465,10 +501,12 @@ struct SDL
 						for(auto & window : windows)
 							if (window->sdl_window == sdl_window)
 							{
-								if (e.type == SDL_KEYDOWN)
-									window->event_key_down(ev.keysym.sym);
-								else if (e.type == SDL_KEYUP)
-									window->event_key_up(ev.keysym.sym);
+								event my_event{event_type::key, 0};
+								my_event.data.key.pressed  = e.type == SDL_KEYDOWN;
+								my_event.data.key.released = e.type == SDL_KEYUP;
+								my_event.data.key.keycode = ev.keysym.scancode;
+								my_event.data.key.charcode = ev.keysym.sym;
+								window->handle_event(my_event);
 								break;
 							}
 						break;

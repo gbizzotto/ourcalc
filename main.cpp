@@ -20,7 +20,7 @@ struct my_button_t : OurW::Button
 
 	virtual void event_clicked() override
 	{
-		butt1->set_text("zzzzzzzzz");
+		butt1->set_text("123");
 	}
 };
 
