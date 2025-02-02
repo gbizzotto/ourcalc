@@ -35,7 +35,7 @@ struct my_window : OurW::Window
 
 	my_window(const char * title, int width, int height)
 		: OurW::Window(title, width, height)
-		, split1(&this->container, {200, 200, 400, 400}, false)
+		, split1(&this->container, {200, 200, 400, 400}, true)
 		, butt1 (&split1.one, "button 1", {10, 50,200,40})
 		, butt2 (&split1.one, "button 2", {10,150,200,40})
 		, text1 (&split1.two, "asdf", {10,200,200,40})
@@ -48,7 +48,7 @@ struct my_window : OurW::Window
 		//split1.two.add_widget(&text1);
 		//split1.two.add_widget(&label1);
 
-		split1.two.set_layout(std::make_unique<OurW::VLayout>());
+		split1.two.set_layout(std::make_unique<OurW::VLayout>(vertical_alignment_t::bottom));
 
 		//this->container.add_widget(&split1, true);
 

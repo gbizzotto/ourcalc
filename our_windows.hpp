@@ -14,6 +14,23 @@ enum class widget_change_t
 	focus_changed,
 };
 
+enum class horizontal_alignment_t
+{
+	none = 0,
+	center = 1,
+	left = 2,
+	right = 3,
+	justify = 4,
+};
+enum class vertical_alignment_t
+{
+	none = 0,
+	center = 1,
+	top = 2,
+	bottom = 3,
+	justify = 4,
+};
+
 
 template<typename WSW>
 struct OW
@@ -322,7 +339,7 @@ struct OW
 		virtual void _redraw() override
 		{
 			if (is_horizontal)
-				this->drawable_area.fill_rect(0, split_position+thickness, this->rect.w, split_position-thickness, this->color_bg, this->color_bg, this->color_bg);
+				this->drawable_area.fill_rect(0, split_position-thickness, this->rect.w, split_position+thickness, this->color_bg, this->color_bg, this->color_bg);
 			else
 				this->drawable_area.fill_rect(split_position-thickness, 0, split_position+thickness, this->rect.h, this->color_bg, this->color_bg, this->color_bg);
 
@@ -346,6 +363,10 @@ struct OW
 
 			split_position = p;
 
+			this->expect(&one, widget_change_t::resized, [](){});
+			this->expect(&one, widget_change_t::redrawn, [](){});
+			this->expect(&two, widget_change_t::resized, [](){});
+			this->expect(&two, widget_change_t::redrawn, [](){});
 			if (is_horizontal)
 			{
 				one.set_size({this->rect.w, split_position-thickness/2});
@@ -358,7 +379,7 @@ struct OW
 				two.rect.x = split_position+thickness/2;
 				two.set_size({this->rect.w-split_position-thickness/2, this->rect.h});
 			}
-			//_redraw();
+			_redraw();
 		}
 
 		virtual bool handle_event(event & ev) override
@@ -704,10 +725,34 @@ struct OW
 
 	struct VLayout : Layout
 	{
+		horizontal_alignment_t h_align = horizontal_alignment_t::center;
+		  vertical_alignment_t v_align =   vertical_alignment_t::center;
+
+		VLayout() {}
+		VLayout(vertical_alignment_t valign)
+			: v_align(valign)
+		{}
+
 		virtual void rearrange_widgets(const Container & container, std::vector<Widget*> & widgets, [[maybe_unused]]int w, [[maybe_unused]]int h) override
 		{
-			// reorganize widgets
-			int next_y = container.border_width + container.padding;
+			// good for v_align == top
+			int next_y = [&]() {
+					if (   v_align == vertical_alignment_t::top
+						|| v_align == vertical_alignment_t::justify  )
+						return container.border_width + container.padding;
+
+					int total_height = 0;
+					for (Widget * widget : widgets)
+						total_height += widget->rect.h;
+
+					if (v_align == vertical_alignment_t::center)
+						return (h - total_height)/2;
+					if (v_align == vertical_alignment_t::bottom)
+						return h - container.border_width - container.padding - total_height;
+
+					return 0;
+				}();
+			
 			for (Widget * widget : widgets)
 			{
 				widget->rect.y = next_y;
