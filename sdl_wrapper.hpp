@@ -361,7 +361,7 @@ struct DrawableArea
 	    SDL_RenderDrawLine(renderer, x, y, x, y+h-1);
 	    SDL_SetRenderDrawColor(renderer, light, light, light, 255);
 	    SDL_RenderDrawLine(renderer, x, y+h-1, x+w-1, y+h-1);
-	    SDL_RenderDrawLine(renderer, x+w-1, y, x+w-1, y+h-1);
+	    SDL_RenderDrawLine(renderer, x+w-1, y, x+w-1, y+h);
 		SDL_SetRenderTarget(renderer, NULL);
 	}
 	void fill_rect(int x, int y, int w, int h, int r, int g, int b)

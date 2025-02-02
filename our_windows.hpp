@@ -101,9 +101,9 @@ struct OW
 			if (border_width == 0)
 				return;
 			if (has_focus())
-				this->drawable_area.draw_3d_rect(0, 0, rect.w-1, rect.h-1, border_color_black, border_color_black, border_is_sunken);
+				this->drawable_area.draw_3d_rect(0, 0, rect.w, rect.h, border_color_black, border_color_black, border_is_sunken);
 			else
-				this->drawable_area.draw_3d_rect(0, 0, rect.w-1, rect.h-1, border_color_light, border_color_dark, border_is_sunken);
+				this->drawable_area.draw_3d_rect(0, 0, rect.w, rect.h, border_color_light, border_color_dark, border_is_sunken);
 		}
 
 		virtual void pack() {}
@@ -374,17 +374,25 @@ struct OW
 						}
 						else if ( ! ev.data.mouse.pressed)
 						{
+							int new_pos;
 							// mouse moved
 							if (is_horizontal)
 							{
-								if (ev.data.mouse.y > 15 && ev.data.mouse.y < this->rect.h-15)
-									set_split_position(ev.data.mouse.y);
+								new_pos = ev.data.mouse.y;
+								if (ev.data.mouse.y < 15)
+									new_pos = 15;
+								else if (ev.data.mouse.y > this->rect.h-15)
+									new_pos = this->rect.h-15;
 							}
 							else if ( ! is_horizontal)
 							{
-								if (ev.data.mouse.x > 15 && ev.data.mouse.x < this->rect.w-15)
-									set_split_position(ev.data.mouse.x);
+								new_pos = ev.data.mouse.x;
+								if (ev.data.mouse.x < 15)
+									new_pos = 15;
+								else if (ev.data.mouse.x > this->rect.w-15)
+									new_pos = this->rect.w-15;
 							}
+							set_split_position(new_pos);
 						}
 						return false;
 					}
@@ -540,6 +548,7 @@ struct OW
 			: Widget(container, r)
 			, caption(t, container->parent_window)
 		{
+			this->border_is_sunken = true;
 			caption.add_monitor(this);
 			this->padding = 5;
 			_redraw();
@@ -571,8 +580,6 @@ struct OW
 
 			// Background
 			this->drawable_area.fill(color_bg, color_bg, color_bg);
-			// Border
-			this->drawable_area.draw_3d_rect(0, 0, this->rect.w, this->rect.h, color_light, color_dark, true);
 			// Text
 			//caption.render();
 			text_x = this->padding;
@@ -582,6 +589,9 @@ struct OW
 			// cursor
 			if (this->has_focus())
 				this->drawable_area.draw_line(cursor_x, text_y, cursor_x, text_y + caption.h, 0, 0, 0);
+
+			// Border
+			this->draw_border();
 
 			this->notify_monitors(widget_change_t::redrawn);
 		}
