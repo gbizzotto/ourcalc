@@ -157,6 +157,12 @@ struct OW
 				widget->remove_monitor(this);
 		}
 
+		virtual void set_size(std::pair<int,int> size) override
+		{
+			layout->rearrange_widgets(*this, widgets, size.first, size.second);
+			Widget::set_size(size);
+		}
+
 		void set_layout(std::unique_ptr<Layout> new_layout)
 		{
 			layout = std::move(new_layout);
@@ -551,6 +557,7 @@ struct OW
 			this->border_is_sunken = true;
 			caption.add_monitor(this);
 			this->padding = 5;
+			this->color_bg = 255;
 			_redraw();
 		}
 
@@ -571,15 +578,8 @@ struct OW
 
 		virtual void _redraw() override
 		{
-			int color_bg = 255;
-			int color_light = 220;
-			int color_dark  = 64;
-
-			if (this->has_focus())
-				color_light = color_dark = 0;
-
 			// Background
-			this->drawable_area.fill(color_bg, color_bg, color_bg);
+			this->drawable_area.fill(this->color_bg, this->color_bg, this->color_bg);
 			// Text
 			//caption.render();
 			text_x = this->padding;
