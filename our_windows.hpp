@@ -198,6 +198,7 @@ struct OW
 
 		virtual void add_widget(Widget * widget, bool do_redraw = false)
 		{
+			widget->parent_container = this;
 			widgets.push_back(widget);
 			widget->add_monitor(this);
 			if (layout->rearrange_widgets(*this, this->rect.w, this->rect.h) && do_redraw)
@@ -511,10 +512,12 @@ struct OW
 	{
 		bool pressed = false;
 		Text caption;
+		std::function<void()> func;
 
-		Button(Window * window, std::string t, Rect r)
+		Button(Window * window, std::string t, Rect r, std::function<void()> f)
 			: Widget(window, r)
 			, caption(t, window)
+			, func(std::move(f))
 		{
 			caption.add_monitor(this);
 			this->border_is_sunken = false;
@@ -578,6 +581,7 @@ struct OW
 						this->border_is_sunken = true;
 						this->take_focus();
 						_redraw();
+						return true;
 					}
 					else
 					{
@@ -599,7 +603,11 @@ struct OW
 			return false;
 		}
 
-		virtual void event_clicked() {}
+		virtual void event_clicked()
+		{
+			if (func)
+				func();
+		}
 	};
 
 
@@ -917,88 +925,13 @@ struct OW
 
 
 
-	struct MenuItem : Widget, monitor<text_change_t>
+	struct MenuItem : Button
 	{
-		Text caption;
-		bool pressed = false;
-		std::function<void()> func;
-
 		MenuItem(Window * window, std::string text, Rect r, std::function<void()> f)
-			: Widget(window, r)
-			, caption(std::move(text), window)
-			, func(std::move(f))
+			: Button(window, text, r, f)
 		{
 			this->border_width = 0;
-			caption.add_monitor(this);
-			pack(); // will redraw
-		}
-
-		virtual void notify(monitorable<text_change_t> *, text_change_t &) override
-		{
-			_redraw();
-		}
-
-		virtual bool focusable() override { return false; }
-		virtual void _redraw() override
-		{
-			caption.render();
-			int y = (this->rect.h - caption.h) / 2;
-			this->clear_background();
-			this->drawable_area.copy_from(caption, 0, y);
-			this->notify_monitors(widget_change_t::redrawn);
-		}
-
-		virtual bool pack() override
-		{
-			return this->set_size(caption.get_size());
-		}
-
-		virtual bool handle_event(event & ev) override
-		{
-			switch(ev.type)
-			{
-				case mouse:
-				{
-					if (ev.data.mouse.pressed)
-					{
-						if (pressed)
-							return false;
-						pressed = true; 
-						this->border_width = 1;
-						this->border_is_sunken = true;
-						_redraw();
-					}
-					else
-					{
-						if ( ! pressed)
-							return false;
-						pressed = false;
-						this->border_is_sunken = false;
-						this->border_width = 0;
-						event_clicked();
-						_redraw();
-						return true;
-					}
-					return true;
-				}
-				case key:
-				{
-					// TODO: event_clicked if enter or space
-				}
-				default:
-					break;
-			}
-			return false;
-		}
-
-		virtual void event_clicked()
-		{
-			if (func)
-				func();
-		}
-		virtual int height_packed() override
-		{
-			return 2*(this->padding + this->border_width) + caption.h;
+			this->pack(); // will redraw
 		}
 	};
 
@@ -1007,6 +940,7 @@ struct OW
 		MenuBar(Window * window)
 			: Container(window, {0,0,window->w,50})
 		{
+			this->padding = 0;
 			this->border_width = 1;
 			this->border_is_sunken = false;
 
@@ -1020,9 +954,9 @@ struct OW
 
 		virtual void add_widget(Widget * widget, bool do_redraw = false) override
 		{
-			Container::add_widget(widget);
-			if (this->vpack() && do_redraw)
-				this->_redraw();
+			Container::add_widget(widget, do_redraw);
+			//if (this->vpack() && do_redraw)
+			//	this->_redraw();
 		}
 		void add_widget(Widget & widget, bool do_redraw = false)
 		{
