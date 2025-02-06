@@ -17,18 +17,20 @@ enum class widget_change_t
 enum class horizontal_alignment_t
 {
 	none = 0,
-	center = 1,
-	left = 2,
-	right = 3,
-	justify = 4,
+	center,
+	left,
+	right,
+	justify,
+	fill,
 };
 enum class vertical_alignment_t
 {
 	none = 0,
-	center = 1,
-	top = 2,
-	bottom = 3,
-	justify = 4,
+	center,
+	top,
+	bottom,
+	justify,
+	fill,
 };
 
 
@@ -61,14 +63,6 @@ struct OW
 
 		int padding = 2;
 
-		Widget(Container * container, Rect r)
-			: parent_container(container)
-			, rect(r)
-			, drawable_area(container->parent_window, r.w, r.h)
-		{
-			if (parent_container)
-				parent_container->add_widget(this, false);
-		}
 		Widget(Window * window, Rect r)
 			: rect(r)
 			, drawable_area(window, r.w, r.h)
@@ -113,6 +107,10 @@ struct OW
 				parent_container->mouse_release(this);
 		}
 
+		virtual void clear_background()
+		{
+			this->drawable_area.fill(this->color_bg, this->color_bg, this->color_bg);
+		}
 		virtual void draw_border()
 		{
 			if (border_width == 0)
@@ -123,27 +121,36 @@ struct OW
 				this->drawable_area.draw_3d_rect(0, 0, rect.w, rect.h, border_color_light, border_color_dark, border_is_sunken);
 		}
 
-		virtual void pack() {}
-		virtual void set_size(std::pair<int,int> size)
+		virtual bool pack()
+		{
+			return vpack() | hpack();
+		}
+		virtual bool vpack() { return false; }
+		virtual bool hpack() { return false; }
+		virtual bool set_size(std::pair<int,int> size)
 		{
 			if (rect.w == std::get<0>(size) && rect.h == std::get<1>(size))
-				return;
+				return false;
 			rect.w = std::get<0>(size);
 			rect.h = std::get<1>(size);
 			drawable_area.set_size(size);
 			_redraw();
 			notify_monitors(widget_change_t::resized);
+			return true;
 		}
 		virtual bool focusable() { return true; }
+		virtual int height_packed() =0;
 		virtual void _redraw() {}
+		virtual bool can_vfill() { return true; }
 
 		virtual bool handle_event(event &) { return false; }
 	};
 	
 	struct Layout
 	{
-		virtual void rearrange_widgets(const Container &, std::vector<Widget*> &, [[maybe_unused]]int w, [[maybe_unused]]int h)
-		{}
+		virtual bool rearrange_widgets(const Container &, [[maybe_unused]]int w, [[maybe_unused]]int h) { return false; }
+		virtual bool vpack(Container &) { return false; }
+		virtual bool hpack(Container &) { return false; }
 	};
 
 	struct Container : Widget, monitor<widget_change_t>
@@ -160,48 +167,53 @@ struct OW
 			this->border_width = 0;
 			_redraw();
 		}
-		Container(Container * container, Rect r)
+		/*Container(Container * container, Rect r)
 			: Widget(container, r)
 			, parent_window(container->parent_window)
 			, layout(std::make_unique<Layout>())
 		{
 			this->border_width = 0;
 			_redraw();
-		}
+		}*/
 		~Container()
 		{
 			for (Widget * widget : this->widgets)
 				widget->remove_monitor(this);
 		}
 
-		virtual void set_size(std::pair<int,int> size) override
+		virtual bool set_size(std::pair<int,int> size) override
 		{
-			layout->rearrange_widgets(*this, widgets, size.first, size.second);
-			Widget::set_size(size);
+			if (std::get<0>(size) == this->rect.w && std::get<1>(size) == this->rect.h)
+				return false;
+			return layout->rearrange_widgets(*this, size.first, size.second)
+				| Widget::set_size(size);
 		}
 
 		void set_layout(std::unique_ptr<Layout> new_layout)
 		{
 			layout = std::move(new_layout);
-			layout->rearrange_widgets(*this, widgets, this->rect.w, this->rect.h);
+			layout->rearrange_widgets(*this, this->rect.w, this->rect.h);
 			_redraw();
 		}
 
-		void add_widget(Widget * widget, bool do_redraw = false)
+		virtual void add_widget(Widget * widget, bool do_redraw = false)
 		{
 			widgets.push_back(widget);
 			widget->add_monitor(this);
-			layout->rearrange_widgets(*this, widgets, this->rect.w, this->rect.h);
-			if (do_redraw)
+			if (layout->rearrange_widgets(*this, this->rect.w, this->rect.h) && do_redraw)
 				_redraw();
+		}
+		void add_widget(Widget & widget, bool do_redraw = false)
+		{
+			add_widget(&widget, do_redraw);
 		}
 
 		virtual void notify(monitorable<widget_change_t> *, widget_change_t & ev) override
 		{
 			if (ev == widget_change_t::resized)
 			{
-				layout->rearrange_widgets(*this, widgets, this->rect.w, this->rect.h);
-				_redraw();
+				if (layout->rearrange_widgets(*this, this->rect.w, this->rect.h))
+					_redraw();
 			}
 			else
 			{
@@ -224,7 +236,7 @@ struct OW
 
 		virtual void _redraw()
 		{
-			this->drawable_area.fill(this->color_bg, this->color_bg, this->color_bg);
+			this->clear_background();
 			for (Widget *  widget : widgets) {
 				//widget->_redraw();
 				this->drawable_area.copy_from(widget->drawable_area, widget->rect.x, widget->rect.y);
@@ -240,6 +252,14 @@ struct OW
 					&& y >= widget->rect.y && y < widget->rect.y + widget->rect.h )
 					return &*widget;
 			return nullptr;
+		}
+
+		virtual int height_packed() override
+		{
+			int h = 2*(this->border_width + this->padding);
+			for (Widget * widget : widgets)
+				h += widget->height_packed();
+			return h;
 		}
 
 		virtual bool handle_event(event & ev) override
@@ -267,6 +287,11 @@ struct OW
 			}
 			return false;
 		}
+
+		virtual bool vpack() override
+		{
+			return layout->vpack(*this);
+		}
 	};
 
 
@@ -277,9 +302,9 @@ struct OW
 	{
 		Text caption;
 
-		Label(Container * container, std::string text, Rect r)
-			: Widget(container, r)
-			, caption(std::move(text), container->parent_window)
+		Label(Window * window, std::string text, Rect r)
+			: Widget(window, r)
+			, caption(std::move(text), window)
 		{
 			caption.add_monitor(this);
 			_redraw();
@@ -300,9 +325,13 @@ struct OW
 			this->notify_monitors(widget_change_t::redrawn);
 		}
 
-		virtual void pack() 
+		virtual bool pack() override
 		{
-			this->set_size(caption.get_size());
+			return this->set_size(caption.get_size());
+		}
+		virtual int height_packed() override
+		{
+			return std::get<1>(caption.get_size());
 		}
 	};
 
@@ -313,12 +342,12 @@ struct OW
 		int split_position;
 		Container one, two;
 
-		Splitter(Container * container, Rect r, bool is_horizontal)
-			: Widget(container, r)
+		Splitter(Window * window, Rect r, bool is_horizontal)
+			: Widget(window, r)
 			, is_horizontal(is_horizontal)
 			, split_position((is_horizontal?r.h:r.w)/2)
-			, one(container->parent_window, Rect{                                  0,                                   0, is_horizontal?r.w:((r.w-thickness)/2), is_horizontal?((r.h-thickness)/2):r.h})
-			, two(container->parent_window, Rect{is_horizontal?0:((r.w+thickness)/2), is_horizontal?((r.h+thickness)/2):0, is_horizontal?r.w:((r.w-thickness)/2), is_horizontal?((r.h-thickness)/2):r.h})
+			, one(window, Rect{                                  0,                                   0, is_horizontal?r.w:((r.w-thickness)/2), is_horizontal?((r.h-thickness)/2):r.h})
+			, two(window, Rect{is_horizontal?0:((r.w+thickness)/2), is_horizontal?((r.h+thickness)/2):0, is_horizontal?r.w:((r.w-thickness)/2), is_horizontal?((r.h-thickness)/2):r.h})
 		{
 			one.border_width = 1;
 			two.border_width = 1;
@@ -336,6 +365,13 @@ struct OW
 		}
 
 		virtual bool focusable() override { return false; }
+		virtual int height_packed() override
+		{
+			if (is_horizontal)
+				return one.height_packed() + two.height_packed() + thickness;
+			else
+				return this->rect.h;
+		}
 		virtual void _redraw() override
 		{
 			if (is_horizontal)
@@ -476,9 +512,9 @@ struct OW
 		bool pressed = false;
 		Text caption;
 
-		Button(Container * container, std::string t, Rect r)
-			: Widget(container, r)
-			, caption(t, container->parent_window)
+		Button(Window * window, std::string t, Rect r)
+			: Widget(window, r)
+			, caption(t, window)
 		{
 			caption.add_monitor(this);
 			this->border_is_sunken = false;
@@ -495,9 +531,9 @@ struct OW
 			caption.set_text(s);
 		}
 
-		virtual void pack()
+		virtual bool pack() override
 		{
-			this->set_size({2*this->border_width + 2*this->padding + caption.w, 2*this->border_width + 2*this->padding + caption.h});
+			return this->set_size({2*this->border_width + 2*this->padding + caption.w, 2*this->border_width + 2*this->padding + caption.h});
 		}
 
 		virtual void _redraw() override
@@ -508,8 +544,7 @@ struct OW
 				offset = 1;
 			}
 
-			// Background
-			this->drawable_area.fill(this->color_bg, this->color_bg, this->color_bg);
+			this->clear_background();
 			// Border
 			this->draw_border();
 			// Text
@@ -518,6 +553,11 @@ struct OW
 			int y = (this->rect.h - caption.h) / 2 + offset;
 			this->drawable_area.copy_from(caption, x, y);
 			this->notify_monitors(widget_change_t::redrawn);
+		}
+
+		virtual int height_packed() override
+		{
+			return 2*(this->border_width + this->padding) + caption.h;
 		}
 
 		virtual bool handle_event(event & ev) override
@@ -571,9 +611,9 @@ struct OW
 		unsigned int char_pos = 0;
 		unsigned int cursor_x = 0;
 	
-		TextEdit(Container * container, std::string t, Rect r)
-			: Widget(container, r)
-			, caption(t, container->parent_window)
+		TextEdit(Window * window, std::string t, Rect r)
+			: Widget(window, r)
+			, caption(t, window)
 		{
 			this->border_is_sunken = true;
 			caption.add_monitor(this);
@@ -592,15 +632,18 @@ struct OW
 			caption.set_text(s);
 		}
 
-		virtual void pack()
+		virtual bool pack() override
 		{
-			this->set_size({2*this->border_width + 2*this->padding + caption.w, 2*this->border_width + 2*this->padding + caption.h});
+			return this->set_size({2*this->border_width + 2*this->padding + caption.w, 2*this->border_width + 2*this->padding + caption.h});
 		}
-
+		virtual int height_packed() override
+		{
+			return 2*(this->border_width + this->padding) + caption.h;
+		}
 		virtual void _redraw() override
 		{
 			// Background
-			this->drawable_area.fill(this->color_bg, this->color_bg, this->color_bg);
+			this->clear_background();
 			// Text
 			//caption.render();
 			text_x = this->padding;
@@ -733,13 +776,39 @@ struct OW
 			: v_align(valign)
 		{}
 
-		virtual void rearrange_widgets(const Container & container, std::vector<Widget*> & widgets, [[maybe_unused]]int w, [[maybe_unused]]int h) override
+		virtual bool rearrange_widgets(const Container & container, [[maybe_unused]]int w, [[maybe_unused]]int h) override
 		{
-			// good for v_align == top
+			auto & widgets = container.widgets;
+
 			int next_y = [&]() {
 					if (   v_align == vertical_alignment_t::top
 						|| v_align == vertical_alignment_t::justify  )
 						return container.border_width + container.padding;
+
+					if (v_align == vertical_alignment_t::fill)
+					{
+						// resize vfill widgets so they fill the container
+						int remaining_height = h;
+						int fill_widgets_count = 0;
+						for (Widget * widget : widgets)
+						{
+							remaining_height -= widget->height_packed();
+							fill_widgets_count += widget->can_vfill();
+						}
+						if (fill_widgets_count == 0)
+							return 0;
+						int distribute_height = remaining_height / fill_widgets_count;
+						for (Widget * widget : widgets)
+							if (widget->can_vfill())
+							{
+								widget->set_size({widget->rect.h, widget->height_packed()+distribute_height});
+								remaining_height -= distribute_height;
+							}
+							else
+								widget->vpack();
+						// TODO: when remaining_height / fill_widgets_count has a remainder
+						return 0;
+					}
 
 					int total_height = 0;
 					for (Widget * widget : widgets)
@@ -759,8 +828,209 @@ struct OW
 				next_y += widget->rect.h;
 				widget->rect.x = (w - widget->rect.w) / 2;
 			}
+			return true; // suboptimal	
 		}
 	};
+	struct HLayout : Layout
+	{
+		horizontal_alignment_t h_align = horizontal_alignment_t::center;
+		  vertical_alignment_t v_align =   vertical_alignment_t::center;
+
+		HLayout() {}
+		HLayout(horizontal_alignment_t align)
+			: h_align(align)
+		{}
+
+		virtual bool rearrange_widgets(const Container & container, [[maybe_unused]]int w, [[maybe_unused]]int h) override
+		{
+			auto & widgets = container.widgets;
+
+			int next_x = [&]() {
+					if (   v_align == vertical_alignment_t::top
+						|| v_align == vertical_alignment_t::justify  )
+						return container.border_width + container.padding;
+
+					int total_height = 0;
+					for (Widget * widget : widgets)
+						total_height += widget->rect.h;
+
+					if (v_align == vertical_alignment_t::center)
+						return (h - total_height)/2;
+					if (v_align == vertical_alignment_t::bottom)
+						return h - container.border_width - container.padding - total_height;
+
+					return 0;
+				}();
+			
+			for (Widget * widget : widgets)
+			{
+				widget->rect.x = next_x;
+				next_x += widget->rect.w;
+				widget->rect.y = (h - widget->rect.h) / 2;
+			}
+			return true; // suboptimal
+		}
+
+		// returns true if any change happened
+		virtual bool vpack(Container & container) override
+		{
+			bool changed = false;
+
+			int min_height = 0;
+			for (Widget * widget : container.widgets)
+				min_height = std::max(min_height, widget->height_packed());
+			
+			if (v_align == vertical_alignment_t::justify || v_align == vertical_alignment_t::fill)
+			{
+				for (Widget * widget : container.widgets)
+				{
+					widget->set_size({widget->rect.w,min_height});
+					widget->rect.y = container.border_width + container.padding + (min_height-widget->rect.h)/2;
+					changed = true;
+				}
+				container.set_size({container.rect.w, min_height});
+			}
+			else if (v_align == vertical_alignment_t::bottom)
+			{
+				for (Widget * widget : container.widgets)
+					if (widget->rect.h > min_height)
+					{
+						int height_diff = widget->rect.h - min_height;
+						widget->rect.y += height_diff;
+						widget->set_size({widget->rect.w,min_height});
+						changed = true;
+					}
+			}
+			else
+			{
+				for (Widget * widget : container.widgets)
+					if (widget->rect.h > min_height)
+					{
+						widget->set_size({widget->rect.w,min_height});
+						changed = true;
+					}
+			}
+			return changed;
+		}
+	};
+
+
+
+
+	struct MenuItem : Widget, monitor<text_change_t>
+	{
+		Text caption;
+		bool pressed = false;
+		std::function<void()> func;
+
+		MenuItem(Window * window, std::string text, Rect r, std::function<void()> f)
+			: Widget(window, r)
+			, caption(std::move(text), window)
+			, func(std::move(f))
+		{
+			this->border_width = 0;
+			caption.add_monitor(this);
+			pack(); // will redraw
+		}
+
+		virtual void notify(monitorable<text_change_t> *, text_change_t &) override
+		{
+			_redraw();
+		}
+
+		virtual bool focusable() override { return false; }
+		virtual void _redraw() override
+		{
+			caption.render();
+			int y = (this->rect.h - caption.h) / 2;
+			this->clear_background();
+			this->drawable_area.copy_from(caption, 0, y);
+			this->notify_monitors(widget_change_t::redrawn);
+		}
+
+		virtual bool pack() override
+		{
+			return this->set_size(caption.get_size());
+		}
+
+		virtual bool handle_event(event & ev) override
+		{
+			switch(ev.type)
+			{
+				case mouse:
+				{
+					if (ev.data.mouse.pressed)
+					{
+						if (pressed)
+							return false;
+						pressed = true; 
+						this->border_width = 1;
+						this->border_is_sunken = true;
+						_redraw();
+					}
+					else
+					{
+						if ( ! pressed)
+							return false;
+						pressed = false;
+						this->border_is_sunken = false;
+						this->border_width = 0;
+						event_clicked();
+						_redraw();
+						return true;
+					}
+					return true;
+				}
+				case key:
+				{
+					// TODO: event_clicked if enter or space
+				}
+				default:
+					break;
+			}
+			return false;
+		}
+
+		virtual void event_clicked()
+		{
+			if (func)
+				func();
+		}
+		virtual int height_packed() override
+		{
+			return 2*(this->padding + this->border_width) + caption.h;
+		}
+	};
+
+	struct MenuBar : Container
+	{
+		MenuBar(Window * window)
+			: Container(window, {0,0,window->w,50})
+		{
+			this->border_width = 1;
+			this->border_is_sunken = false;
+
+			auto this_layout = std::make_unique<HLayout>();
+			this_layout->h_align = horizontal_alignment_t::left;
+			this_layout->v_align = vertical_alignment_t::justify;
+			this->set_layout(std::move(this_layout));
+
+			this->_redraw();
+		}
+
+		virtual void add_widget(Widget * widget, bool do_redraw = false) override
+		{
+			Container::add_widget(widget);
+			if (this->vpack() && do_redraw)
+				this->_redraw();
+		}
+		void add_widget(Widget & widget, bool do_redraw = false)
+		{
+			add_widget(&widget, do_redraw);
+		}
+		virtual bool can_vfill() override { return false; }	
+	};
+
 
 	struct focus_holder
 	{

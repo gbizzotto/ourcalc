@@ -23,6 +23,8 @@ struct Window
 	int w, h;
 	
 	Window(const char * title, int width, int height)
+		: w(width)
+		, h(height)
 	{
 		// Create our window
 		sdl_window = SDL_CreateWindow(title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, SDL_WINDOW_SHOWN);
@@ -42,7 +44,7 @@ struct Window
 		if ( ! renderer)
 			throw;
 
-		font = TTF_OpenFont("/usr/share/fonts/truetype/ubuntu/UbuntuMono-R.ttf", 24);
+		font = TTF_OpenFont("/usr/share/fonts/truetype/ubuntu/UbuntuMono-R.ttf", 16);
 		if ( ! font)
 			throw;
 	}
