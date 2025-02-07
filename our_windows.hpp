@@ -541,20 +541,19 @@ struct OW
 
 		virtual void _redraw() override
 		{			
-			int offset = 0;
-			if (pressed)
-			{
-				offset = 1;
-			}
+			int offset = pressed;
 
 			this->clear_background();
-			// Border
-			this->draw_border();
+
 			// Text
 			caption.render();
 			int x = (this->rect.w - caption.w) / 2 + offset;
 			int y = (this->rect.h - caption.h) / 2 + offset;
 			this->drawable_area.copy_from(caption, x, y);
+
+			// Border
+			this->draw_border();
+
 			this->notify_monitors(widget_change_t::redrawn);
 		}
 
@@ -896,7 +895,7 @@ struct OW
 					widget->rect.y = container.border_width + container.padding + (min_height-widget->rect.h)/2;
 					changed = true;
 				}
-				container.set_size({container.rect.w, min_height});
+				container.set_size({container.rect.w, min_height + 2*(container.border_width + container.padding)});
 			}
 			else if (v_align == vertical_alignment_t::bottom)
 			{
