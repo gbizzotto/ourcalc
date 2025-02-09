@@ -50,8 +50,8 @@ struct my_window : OurW::Window
 		split1.two.add_widget(text1 );
 		split1.two.add_widget(label1, true);
 		
-		split1.two.set_layout(std::make_unique<OurW::VLayout>(horizontal_policy{horizontal_policy::alignment_t::center, horizontal_policy::sizing_t::pack}
-		                                                     ,  vertical_policy{  vertical_policy::alignment_t::center,   vertical_policy::sizing_t::pack}));
+		split1.two.set_layout(std::make_unique<OurW::VLayout>(horizontal_policy{horizontal_policy::alignment_t::center, horizontal_policy::sizing_t::justify}
+		                                                     ,  vertical_policy{  vertical_policy::alignment_t::center,   vertical_policy::sizing_t::justify}));
 
 	}
 };

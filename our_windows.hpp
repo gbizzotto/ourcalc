@@ -1186,7 +1186,7 @@ struct OW
 				{
 					int max_packed_height = 0;
 					for (Widget * widget : container.widgets)
-						max_packed_height = std::max(max_packed_height, widget->width_packed());
+						max_packed_height = std::max(max_packed_height, widget->height_packed());
 					for (Widget * widget : container.widgets)
 						changed |= widget->set_height(max_packed_height, false, false);
 					break;
