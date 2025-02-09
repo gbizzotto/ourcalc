@@ -81,7 +81,7 @@ struct OW
 		int border_color_black =   0;
 		int color_bg = 192;
 
-		int padding = 2;
+		int border_padding = 2;
 
 		Widget(Window * window, Rect r)
 			: rect(r)
@@ -206,6 +206,8 @@ struct OW
 		virtual bool rearrange_widgets(Container &) { return false; }
 		virtual bool vpack(Container &, bool, bool) { return false; }
 		virtual bool hpack(Container &, bool, bool) { return false; }
+		virtual int  width_packed(Container &) { return 0; }
+		virtual int height_packed(Container &) { return 0; }
 	};
 
 	struct Container : Widget, monitor<widget_change_t>
@@ -315,20 +317,13 @@ struct OW
 					return &*widget;
 			return nullptr;
 		}
-
 		virtual int width_packed() override
 		{
-			int w = 2*(this->border_width + this->padding);
-			for (Widget * widget : widgets)
-				w += widget->width_packed();
-			return w;
+			return layout->width_packed(*this);
 		}
 		virtual int height_packed() override
 		{
-			int h = 2*(this->border_width + this->padding);
-			for (Widget * widget : widgets)
-				h += widget->height_packed();
-			return h;
+			return layout->height_packed(*this);
 		}
 
 		virtual bool handle_event(event & ev) override
@@ -430,7 +425,7 @@ struct OW
 			one.border_is_sunken = true;
 			two.border_is_sunken = true;
 			this->border_width = 0;
-			this->padding = 0;
+			this->border_padding = 0;
 			one.add_monitor(this);
 			two.add_monitor(this);
 			_redraw();
@@ -677,23 +672,23 @@ struct OW
 
 		virtual bool pack(bool redraw, bool notify) override
 		{
-			return this->set_size({2*this->border_width + 2*this->padding + caption.w, 2*this->border_width + 2*this->padding + caption.h}, redraw, notify);
+			return this->set_size({2*this->border_width + 2*this->border_padding + caption.w, 2*this->border_width + 2*this->border_padding + caption.h}, redraw, notify);
 		}
 		virtual bool hpack(bool redraw, bool notify) override
 		{
-			return this->set_width(2*this->border_width + 2*this->padding + caption.w, redraw, notify);
+			return this->set_width(2*this->border_width + 2*this->border_padding + caption.w, redraw, notify);
 		}
 		virtual bool vpack(bool redraw, bool notify) override
 		{
-			return this->set_height(2*this->border_width + 2*this->padding + caption.h, redraw, notify);
+			return this->set_height(2*this->border_width + 2*this->border_padding + caption.h, redraw, notify);
 		}
 		virtual int width_packed() override
 		{
-			return 2*(this->border_width + this->padding) + caption.w;
+			return 2*(this->border_width + this->border_padding) + caption.w;
 		}
 		virtual int height_packed() override
 		{
-			return 2*(this->border_width + this->padding) + caption.h;
+			return 2*(this->border_width + this->border_padding) + caption.h;
 		}
 
 		virtual void _redraw() override
@@ -776,7 +771,7 @@ struct OW
 		{
 			this->border_is_sunken = true;
 			caption.add_monitor(this);
-			this->padding = 5;
+			this->border_padding = 5;
 			this->color_bg = 255;
 			_redraw();
 		}
@@ -793,23 +788,23 @@ struct OW
 
 		virtual bool pack(bool redraw, bool notify) override
 		{
-			return this->set_size({2*this->border_width + 2*this->padding + caption.w, 2*this->border_width + 2*this->padding + caption.h}, redraw, notify);
+			return this->set_size({2*this->border_width + 2*this->border_padding + caption.w, 2*this->border_width + 2*this->border_padding + caption.h}, redraw, notify);
 		}
 		virtual bool hpack(bool redraw, bool notify) override
 		{
-			return this->set_width(2*this->border_width + 2*this->padding + caption.w, redraw, notify);
+			return this->set_width(2*this->border_width + 2*this->border_padding + caption.w, redraw, notify);
 		}
 		virtual bool vpack(bool redraw, bool notify) override
 		{
-			return this->set_height(2*this->border_width + 2*this->padding + caption.h, redraw, notify);
+			return this->set_height(2*this->border_width + 2*this->border_padding + caption.h, redraw, notify);
 		}
 		virtual int width_packed() override
 		{
-			return 2*(this->border_width + this->padding) + caption.w;
+			return 2*(this->border_width + this->border_padding) + caption.w;
 		}
 		virtual int height_packed() override
 		{
-			return 2*(this->border_width + this->padding) + caption.h;
+			return 2*(this->border_width + this->border_padding) + caption.h;
 		}
 		virtual void _redraw() override
 		{
@@ -817,7 +812,7 @@ struct OW
 			this->clear_background();
 			// Text
 			//caption.render();
-			text_x = this->padding;
+			text_x = this->border_padding;
 			text_y = (this->rect.h - caption.h) / 2;
 			this->drawable_area.copy_from(caption, text_x, text_y);
 
@@ -948,6 +943,22 @@ struct OW
 			, vpolicy(v)
 		{}
 
+		virtual int width_packed(Container & container) override
+		{
+			int w = 2*(container.border_width + container.border_padding);
+			int max_widget_width = 0;
+			for (Widget * widget : container.widgets)
+				max_widget_width = std::max(max_widget_width, widget->width_packed());
+			return w + max_widget_width;
+		}
+		virtual int height_packed(Container & container) override
+		{
+			int h = 2*(container.border_width + container.border_padding);
+			for (Widget * widget : container.widgets)
+				h += widget->height_packed();
+			return h;
+		}
+
 		virtual bool rearrange_widgets(Container & container) override
 		{
 			bool changed = false;
@@ -981,7 +992,7 @@ struct OW
 					//int max_packed_width = 0;
 					//for (Widget * widget : container.widgets)
 					//	max_packed_width = std::max(max_packed_width, widget->width_packed());
-					//container.set_width(max_packed_width + 2*(container.border_width+container.padding), false, false);
+					//container.set_width(max_packed_width + 2*(container.border_width+container.border_padding), false, false);
 					break;
 				}
 				case horizontal_policy::sizing_t::justify:
@@ -995,7 +1006,7 @@ struct OW
 				}
 				case horizontal_policy::sizing_t::fill:
 					for (Widget * widget : container.widgets)
-						changed |= widget->set_width(container.rect.w - 2*(container.border_width+container.padding), false, false);
+						changed |= widget->set_width(container.rect.w - 2*(container.border_width+container.border_padding), false, false);
 					break;
 			}
 			return changed;
@@ -1014,14 +1025,14 @@ struct OW
 			else if (hpolicy.alignment == horizontal_policy::alignment_t::right)
 				for (Widget * widget : container.widgets)
 				{
-					int new_x = container.rect.w - container.border_width - container.padding - widget->rect.w;
+					int new_x = container.rect.w - container.border_width - container.border_padding - widget->rect.w;
 					changed |= widget->rect.x != new_x;
 					widget->rect.x = new_x;
 				}
 			else // left or nonw
 				for (Widget * widget : container.widgets)
 				{
-					int new_x = container.border_width + container.padding;
+					int new_x = container.border_width + container.border_padding;
 					changed |= widget->rect.x != new_x;
 					widget->rect.x = new_x;
 				}
@@ -1044,11 +1055,11 @@ struct OW
 						int total_height = 0;
 						for (Widget * widget : container.widgets)
 							total_height += widget->rect.h;
-						return container.rect.h - container.border_width - container.padding - total_height;
+						return container.rect.h - container.border_width - container.border_padding - total_height;
 					}
 					else // top or none
 					{
-						return container.border_width + container.padding;
+						return container.border_width + container.border_padding;
 					}
 				}();
 			for (Widget * widget : container.widgets)
@@ -1087,7 +1098,7 @@ struct OW
 				}
 				if (fill_widgets_count != 0)
 				{
-					int surplus_height = container.rect.h - 2*(container.border_width+container.padding) - min_total_height;
+					int surplus_height = container.rect.h - 2*(container.border_width+container.border_padding) - min_total_height;
 					int surplus_height_per_widget = surplus_height / fill_widgets_count;
 					int surplus_widgets = surplus_height % fill_widgets_count;
 					for (Widget * widget : container.widgets)
@@ -1137,6 +1148,22 @@ struct OW
 			return changed;
 		}
 
+		virtual int width_packed(Container & container) override
+		{
+			int w = 2*(container.border_width + container.border_padding);
+			for (Widget * widget : container.widgets)
+				w += widget->width_packed();
+			return w;
+		}
+		virtual int height_packed(Container & container) override
+		{
+			int h = 2*(container.border_width + container.border_padding);
+			int max_widget_height = 0;
+			for (Widget * widget : container.widgets)
+				max_widget_height = std::max(max_widget_height, widget->height_packed());
+			return h + max_widget_height;
+		}
+
 		bool calculate_new_h(Container & container)
 		{
 			bool changed = false;
@@ -1152,7 +1179,7 @@ struct OW
 					//int max_packed_height = 0;
 					//for (Widget * widget : container.widgets)
 					//	max_packed_height = std::max(max_packed_height, widget->height_packed());
-					//container.set_height(max_packed_height + 2*(container.border_width+container.padding), false, false);
+					//container.set_height(max_packed_height + 2*(container.border_width+container.border_padding), false, false);
 					break;
 				}
 				case vertical_policy::sizing_t::justify:
@@ -1166,7 +1193,7 @@ struct OW
 				}
 				case vertical_policy::sizing_t::fill:
 					for (Widget * widget : container.widgets)
-						changed |= widget->set_height(container.rect.h - 2*(container.border_width+container.padding), false, false);
+						changed |= widget->set_height(container.rect.h - 2*(container.border_width+container.border_padding), false, false);
 					break;
 			}
 			return changed;
@@ -1180,10 +1207,10 @@ struct OW
 					widget->rect.y = (container.rect.h - widget->rect.h)/2;
 			else if (vpolicy.alignment == vertical_policy::alignment_t::bottom)
 				for (Widget * widget : container.widgets)
-					widget->rect.y = container.rect.h - container.border_width - container.padding - widget->rect.h;
+					widget->rect.y = container.rect.h - container.border_width - container.border_padding - widget->rect.h;
 			else // top or nonw
 				for (Widget * widget : container.widgets)
-					widget->rect.y = container.border_width + container.padding;
+					widget->rect.y = container.border_width + container.border_padding;
 			return changed;
 		}
 
@@ -1203,11 +1230,11 @@ struct OW
 						int total_width = 0;
 						for (Widget * widget : container.widgets)
 							total_width += widget->rect.w;
-						return container.rect.w - container.border_width - container.padding - total_width;
+						return container.rect.w - container.border_width - container.border_padding - total_width;
 					}
 					else // left or none
 					{
-						return container.border_width + container.padding;
+						return container.border_width + container.border_padding;
 					}
 				}();
 			for (Widget * widget : container.widgets)
@@ -1246,7 +1273,7 @@ struct OW
 				}
 				if (fill_widgets_count != 0)
 				{
-					int surplus_width = container.rect.w - 2*(container.border_width+container.padding) - min_total_width;
+					int surplus_width = container.rect.w - 2*(container.border_width+container.border_padding) - min_total_width;
 					int surplus_width_per_widget = surplus_width / fill_widgets_count;
 					int surplus_widgets = surplus_width % fill_widgets_count;
 					for (Widget * widget : container.widgets)
@@ -1285,7 +1312,7 @@ struct OW
 		MenuBar(Window * window)
 			: Container(window, {0,0,window->w,50})
 		{
-			this->padding = 0;
+			this->border_padding = 0;
 			this->border_width = 1;
 			this->border_is_sunken = false;
 
@@ -1350,7 +1377,7 @@ struct OW
 			, container(this, Rect{0, 0, width, height})
 		{
 			container.border_width = 0;
-			container.padding = 0;
+			container.border_padding = 0;
 			container.add_monitor(this);
 		}
 

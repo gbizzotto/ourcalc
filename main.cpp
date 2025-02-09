@@ -39,16 +39,17 @@ struct my_window : OurW::Window
 		text1.pack(true, true);
 
 		this->container.add_widget(menubar1);
-		menubar1.set_height(menufile.height_packed() + 2*(menubar1.border_width+menubar1.padding), false, false);
+		menubar1.set_height(menufile.height_packed() + 2*(menubar1.border_width+menubar1.border_padding), false, false);
 		menubar1.add_widget(menufile, true);
 		menubar1.add_widget(menuedit, true);
 		this->container.add_widget(middle_container, true);
+		middle_container.border_padding = 0;
 		middle_container.add_widget(split1, true);
 		split1.one.add_widget(butt1 );
 		split1.one.add_widget(butt2 , true);
 		split1.two.add_widget(text1 );
 		split1.two.add_widget(label1, true);
-
+		
 		split1.two.set_layout(std::make_unique<OurW::VLayout>(horizontal_policy{horizontal_policy::alignment_t::center, horizontal_policy::sizing_t::pack}
 		                                                     ,  vertical_policy{  vertical_policy::alignment_t::center,   vertical_policy::sizing_t::pack}));
 
