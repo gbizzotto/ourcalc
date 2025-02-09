@@ -30,6 +30,7 @@ struct my_window : OurW::Window
 		, text1(this, "asdf", {10,200,200,40})
 		, label1(this, "gxb", {10,250,200,40})
 	{
+		this->container.inter_padding = 0;
 		this->container.set_layout(std::make_unique<OurW::VLayout>(horizontal_policy{horizontal_policy::alignment_t::left, horizontal_policy::sizing_t::fill}
 		                                                          ,  vertical_policy{  vertical_policy::alignment_t::top ,   vertical_policy::sizing_t::fill}));
 

@@ -82,6 +82,7 @@ struct OW
 		int color_bg = 192;
 
 		int border_padding = 2;
+		int inter_padding = 4;
 
 		Widget(Window * window, Rect r)
 			: rect(r)
@@ -1045,14 +1046,14 @@ struct OW
 			int y = [&](){
 					if (vpolicy.alignment == vertical_policy::alignment_t::center)
 					{
-						int total_height = 0;
+						int total_height = container.inter_padding * (container.widgets.size()-1);
 						for (Widget * widget : container.widgets)
 							total_height += widget->rect.h;
 						return (container.rect.h - total_height)/2;
 					}
 					else if (vpolicy.alignment == vertical_policy::alignment_t::bottom)
 					{
-						int total_height = 0;
+						int total_height = container.inter_padding * (container.widgets.size()-1);
 						for (Widget * widget : container.widgets)
 							total_height += widget->rect.h;
 						return container.rect.h - container.border_width - container.border_padding - total_height;
@@ -1066,7 +1067,7 @@ struct OW
 			{
 				changed |= (widget->rect.y != y);
 				widget->rect.y = y;
-				y += widget->rect.h;
+				y += widget->rect.h + container.inter_padding;
 			}
 			return changed;
 		}
@@ -1220,14 +1221,14 @@ struct OW
 			int x = [&](){
 					if (hpolicy.alignment == horizontal_policy::alignment_t::center)
 					{
-						int total_width = 0;
+						int total_width = container.inter_padding * (container.widgets.size()-1);
 						for (Widget * widget : container.widgets)
 							total_width += widget->rect.w;
 						return (container.rect.w - total_width)/2;
 					}
 					else if (hpolicy.alignment == horizontal_policy::alignment_t::right)
 					{
-						int total_width = 0;
+						int total_width = container.inter_padding * (container.widgets.size()-1);
 						for (Widget * widget : container.widgets)
 							total_width += widget->rect.w;
 						return container.rect.w - container.border_width - container.border_padding - total_width;
@@ -1241,7 +1242,7 @@ struct OW
 			{
 				changed |= (widget->rect.x != x);
 				widget->rect.x = x;
-				x += widget->rect.w;
+				x += widget->rect.w + container.inter_padding;
 			}
 			return changed;
 		}
@@ -1313,6 +1314,7 @@ struct OW
 			: Container(window, {0,0,window->w,50})
 		{
 			this->border_padding = 0;
+			this->inter_padding = 10;
 			this->border_width = 1;
 			this->border_is_sunken = false;
 
