@@ -14,23 +14,43 @@ enum class widget_change_t
 	focus_changed,
 };
 
-enum class horizontal_alignment_t
+struct horizontal_policy
 {
-	none = 0,
-	center,
-	left,
-	right,
-	justify,
-	fill,
+	enum class alignment_t
+	{
+		none = 0,
+		center,
+		left,
+		right,
+	};
+	enum class sizing_t
+	{
+		none = 0,
+		pack,
+		justify,
+		fill,
+	};
+	alignment_t alignment;
+	sizing_t sizing;
 };
-enum class vertical_alignment_t
+struct vertical_policy
 {
-	none = 0,
-	center,
-	top,
-	bottom,
-	justify,
-	fill,
+	enum class alignment_t
+	{
+		none = 0,
+		center,
+		top,
+		bottom,
+	};
+	enum class sizing_t
+	{
+		none = 0,
+		pack,
+		justify,
+		fill,
+	};
+	alignment_t alignment;
+	sizing_t sizing;
 };
 
 
@@ -121,36 +141,71 @@ struct OW
 				this->drawable_area.draw_3d_rect(0, 0, rect.w, rect.h, border_color_light, border_color_dark, border_is_sunken);
 		}
 
-		virtual bool pack()
+		virtual bool pack(bool redraw, bool notify)
 		{
-			return vpack() | hpack();
+			return vpack(redraw, notify) | hpack(redraw, notify);
 		}
-		virtual bool vpack() { return false; }
-		virtual bool hpack() { return false; }
-		virtual bool set_size(std::pair<int,int> size)
+		virtual bool vpack(bool, bool) { return false; }
+		virtual bool hpack(bool, bool) { return false; }
+
+		virtual bool on_width_set() { return false; }
+		virtual bool on_height_set() { return false; }
+		virtual bool on_size_set() { return false; }
+		virtual bool set_width(int width, bool redraw, bool notify)
+		{
+			if (rect.w == width)
+				return false;
+			rect.w = width;
+			drawable_area.set_size({rect.w, rect.h});
+			on_width_set();
+			if (redraw)
+				_redraw();
+			if (notify)
+				notify_monitors(widget_change_t::resized);
+			return true;
+		}
+		virtual bool set_height(int height, bool redraw, bool notify)
+		{
+			if (rect.h == height)
+				return false;
+			rect.h = height;
+			drawable_area.set_size({rect.w, rect.h});
+			on_height_set();
+			if (redraw)
+				_redraw();
+			if (notify)
+				notify_monitors(widget_change_t::resized);
+			return true;
+		}
+		virtual bool set_size(std::pair<int,int> size, bool redraw, bool notify)
 		{
 			if (rect.w == std::get<0>(size) && rect.h == std::get<1>(size))
 				return false;
 			rect.w = std::get<0>(size);
 			rect.h = std::get<1>(size);
 			drawable_area.set_size(size);
-			_redraw();
-			notify_monitors(widget_change_t::resized);
+			on_size_set();
+			if (redraw)
+				_redraw();
+			if (notify)
+				notify_monitors(widget_change_t::resized);
 			return true;
 		}
 		virtual bool focusable() { return true; }
+		virtual int width_packed() =0;
 		virtual int height_packed() =0;
 		virtual void _redraw() {}
 		virtual bool can_vfill() { return true; }
+		virtual bool can_hfill() { return true; }
 
 		virtual bool handle_event(event &) { return false; }
 	};
 	
 	struct Layout
 	{
-		virtual bool rearrange_widgets(const Container &, [[maybe_unused]]int w, [[maybe_unused]]int h) { return false; }
-		virtual bool vpack(Container &) { return false; }
-		virtual bool hpack(Container &) { return false; }
+		virtual bool rearrange_widgets(Container &) { return false; }
+		virtual bool vpack(Container &, bool, bool) { return false; }
+		virtual bool hpack(Container &, bool, bool) { return false; }
 	};
 
 	struct Container : Widget, monitor<widget_change_t>
@@ -181,18 +236,23 @@ struct OW
 				widget->remove_monitor(this);
 		}
 
-		virtual bool set_size(std::pair<int,int> size) override
+		virtual bool on_width_set() override
 		{
-			if (std::get<0>(size) == this->rect.w && std::get<1>(size) == this->rect.h)
-				return false;
-			return layout->rearrange_widgets(*this, size.first, size.second)
-				| Widget::set_size(size);
+			return layout->rearrange_widgets(*this);
+		}
+		virtual bool on_height_set() override
+		{
+			return layout->rearrange_widgets(*this);
+		}
+		virtual bool on_size_set() override
+		{
+			return layout->rearrange_widgets(*this);
 		}
 
 		void set_layout(std::unique_ptr<Layout> new_layout)
 		{
 			layout = std::move(new_layout);
-			layout->rearrange_widgets(*this, this->rect.w, this->rect.h);
+			layout->rearrange_widgets(*this);
 			_redraw();
 		}
 
@@ -201,7 +261,8 @@ struct OW
 			widget->parent_container = this;
 			widgets.push_back(widget);
 			widget->add_monitor(this);
-			if (layout->rearrange_widgets(*this, this->rect.w, this->rect.h) && do_redraw)
+			layout->rearrange_widgets(*this);
+			if (do_redraw)
 				_redraw();
 		}
 		void add_widget(Widget & widget, bool do_redraw = false)
@@ -213,7 +274,7 @@ struct OW
 		{
 			if (ev == widget_change_t::resized)
 			{
-				if (layout->rearrange_widgets(*this, this->rect.w, this->rect.h))
+				if (layout->rearrange_widgets(*this))
 					_redraw();
 			}
 			else
@@ -255,6 +316,13 @@ struct OW
 			return nullptr;
 		}
 
+		virtual int width_packed() override
+		{
+			int w = 2*(this->border_width + this->padding);
+			for (Widget * widget : widgets)
+				w += widget->width_packed();
+			return w;
+		}
 		virtual int height_packed() override
 		{
 			int h = 2*(this->border_width + this->padding);
@@ -287,11 +355,6 @@ struct OW
 				}
 			}
 			return false;
-		}
-
-		virtual bool vpack() override
-		{
-			return layout->vpack(*this);
 		}
 	};
 
@@ -326,9 +389,21 @@ struct OW
 			this->notify_monitors(widget_change_t::redrawn);
 		}
 
-		virtual bool pack() override
+		virtual bool pack(bool redraw, bool notify) override
 		{
-			return this->set_size(caption.get_size());
+			return this->set_size(caption.get_size(), redraw, notify);
+		}
+		virtual bool hpack(bool redraw, bool notify) override
+		{
+			return this->set_width(std::get<0>(caption.get_size()), redraw, notify);
+		}
+		virtual bool vpack(bool redraw, bool notify) override
+		{
+			return this->set_height(std::get<1>(caption.get_size()), redraw, notify);
+		}
+		virtual int width_packed() override
+		{
+			return std::get<0>(caption.get_size());
 		}
 		virtual int height_packed() override
 		{
@@ -355,9 +430,64 @@ struct OW
 			one.border_is_sunken = true;
 			two.border_is_sunken = true;
 			this->border_width = 0;
+			this->padding = 0;
 			one.add_monitor(this);
 			two.add_monitor(this);
 			_redraw();
+		}
+
+		virtual bool on_width_set() override
+		{
+			bool changed = false;
+			if (is_horizontal)
+			{
+				changed |= one.set_width(this->rect.w, true, false);
+				changed |= two.set_width(this->rect.w, true, false);
+			}
+			else
+			{
+				changed |= one.set_width(split_position-thickness/2, true, false);
+				changed |= (two.rect.x != split_position+thickness/2);
+				two.rect.x = split_position+thickness/2;
+				changed |= two.set_width(this->rect.w-split_position-thickness/2, true, false);
+			}
+			return changed;
+		}
+		virtual bool on_height_set() override
+		{
+			bool changed = false;
+			if (is_horizontal)
+			{
+				changed |= one.set_height(split_position-thickness/2, true, false);
+				changed = (two.rect.y != split_position+thickness/2);
+				two.rect.y = split_position+thickness/2;
+				changed |= two.set_height(this->rect.h-split_position-thickness/2, true, false);
+			}
+			else
+			{
+				changed |= one.set_height(this->rect.h, true, false);
+				changed |= two.set_height(this->rect.h, true, false);
+			}
+			return changed;
+		}
+		virtual bool on_size_set() override
+		{
+			bool changed = false;
+			if (is_horizontal)
+			{
+				changed |= one.set_size({this->rect.w, split_position-thickness/2}, true, false);
+				changed |= (two.rect.y != split_position+thickness/2);
+				two.rect.y = split_position+thickness/2;
+				changed |= two.set_size({this->rect.w, this->rect.h-split_position-thickness/2}, true, false);
+			}
+			else
+			{
+				changed |= one.set_size({split_position-thickness/2, this->rect.h}, true, false);
+				changed = (two.rect.x != split_position+thickness/2);
+				two.rect.x = split_position+thickness/2;
+				changed |= two.set_size({this->rect.w-split_position-thickness/2, this->rect.h}, true, false);
+			}
+			return changed;
 		}
 
 		virtual void notify(monitorable<widget_change_t> *, widget_change_t &) override
@@ -366,6 +496,13 @@ struct OW
 		}
 
 		virtual bool focusable() override { return false; }
+		virtual int width_packed() override
+		{
+			if (is_horizontal)
+				return this->rect.w;
+			else
+				return one.width_packed() + two.width_packed() + thickness;
+		}
 		virtual int height_packed() override
 		{
 			if (is_horizontal)
@@ -404,19 +541,23 @@ struct OW
 			this->expect(&one, widget_change_t::redrawn, [](){});
 			this->expect(&two, widget_change_t::resized, [](){});
 			this->expect(&two, widget_change_t::redrawn, [](){});
+			bool changed = false;
 			if (is_horizontal)
 			{
-				one.set_size({this->rect.w, split_position-thickness/2});
+				changed |= one.set_size({this->rect.w, split_position-thickness/2}, true, true);
+				changed |= (two.rect.y != split_position+thickness/2);
 				two.rect.y = split_position+thickness/2;
-				two.set_size({this->rect.w, this->rect.h-split_position-thickness/2});
+				changed |= two.set_size({this->rect.w, this->rect.h-split_position-thickness/2}, true, true);
 			}
 			else
 			{
-				one.set_size({split_position-thickness/2, this->rect.h});
+				changed |= one.set_size({split_position-thickness/2, this->rect.h}, true, false);
+				changed = (two.rect.x != split_position+thickness/2);
 				two.rect.x = split_position+thickness/2;
-				two.set_size({this->rect.w-split_position-thickness/2, this->rect.h});
+				changed |= two.set_size({this->rect.w-split_position-thickness/2, this->rect.h}, true, true);
 			}
-			_redraw();
+			if (changed)
+				_redraw();
 		}
 
 		virtual bool handle_event(event & ev) override
@@ -534,9 +675,25 @@ struct OW
 			caption.set_text(s);
 		}
 
-		virtual bool pack() override
+		virtual bool pack(bool redraw, bool notify) override
 		{
-			return this->set_size({2*this->border_width + 2*this->padding + caption.w, 2*this->border_width + 2*this->padding + caption.h});
+			return this->set_size({2*this->border_width + 2*this->padding + caption.w, 2*this->border_width + 2*this->padding + caption.h}, redraw, notify);
+		}
+		virtual bool hpack(bool redraw, bool notify) override
+		{
+			return this->set_width(2*this->border_width + 2*this->padding + caption.w, redraw, notify);
+		}
+		virtual bool vpack(bool redraw, bool notify) override
+		{
+			return this->set_height(2*this->border_width + 2*this->padding + caption.h, redraw, notify);
+		}
+		virtual int width_packed() override
+		{
+			return 2*(this->border_width + this->padding) + caption.w;
+		}
+		virtual int height_packed() override
+		{
+			return 2*(this->border_width + this->padding) + caption.h;
 		}
 
 		virtual void _redraw() override
@@ -555,11 +712,6 @@ struct OW
 			this->draw_border();
 
 			this->notify_monitors(widget_change_t::redrawn);
-		}
-
-		virtual int height_packed() override
-		{
-			return 2*(this->border_width + this->padding) + caption.h;
 		}
 
 		virtual bool handle_event(event & ev) override
@@ -639,9 +791,21 @@ struct OW
 			caption.set_text(s);
 		}
 
-		virtual bool pack() override
+		virtual bool pack(bool redraw, bool notify) override
 		{
-			return this->set_size({2*this->border_width + 2*this->padding + caption.w, 2*this->border_width + 2*this->padding + caption.h});
+			return this->set_size({2*this->border_width + 2*this->padding + caption.w, 2*this->border_width + 2*this->padding + caption.h}, redraw, notify);
+		}
+		virtual bool hpack(bool redraw, bool notify) override
+		{
+			return this->set_width(2*this->border_width + 2*this->padding + caption.w, redraw, notify);
+		}
+		virtual bool vpack(bool redraw, bool notify) override
+		{
+			return this->set_height(2*this->border_width + 2*this->padding + caption.h, redraw, notify);
+		}
+		virtual int width_packed() override
+		{
+			return 2*(this->border_width + this->padding) + caption.w;
 		}
 		virtual int height_packed() override
 		{
@@ -775,147 +939,330 @@ struct OW
 
 	struct VLayout : Layout
 	{
-		horizontal_alignment_t h_align = horizontal_alignment_t::center;
-		  vertical_alignment_t v_align =   vertical_alignment_t::center;
+		horizontal_policy hpolicy;
+		  vertical_policy vpolicy;
 
 		VLayout() {}
-		VLayout(vertical_alignment_t valign)
-			: v_align(valign)
+		VLayout(horizontal_policy h, vertical_policy v)
+			: hpolicy(h)
+			, vpolicy(v)
 		{}
 
-		virtual bool rearrange_widgets(const Container & container, [[maybe_unused]]int w, [[maybe_unused]]int h) override
+		virtual bool rearrange_widgets(Container & container) override
 		{
-			auto & widgets = container.widgets;
+			bool changed = false;
 
-			int next_y = [&]() {
-					if (   v_align == vertical_alignment_t::top
-						|| v_align == vertical_alignment_t::justify  )
-						return container.border_width + container.padding;
+			changed |= calculate_new_w(container);
+			changed |= calculate_new_h(container);
+			changed |= calculate_new_x(container);
+			changed |= calculate_new_y(container);
 
-					if (v_align == vertical_alignment_t::fill)
-					{
-						// resize vfill widgets so they fill the container
-						int remaining_height = h;
-						int fill_widgets_count = 0;
-						for (Widget * widget : widgets)
-						{
-							remaining_height -= widget->height_packed();
-							fill_widgets_count += widget->can_vfill();
-						}
-						if (fill_widgets_count == 0)
-							return 0;
-						int distribute_height = remaining_height / fill_widgets_count;
-						for (Widget * widget : widgets)
-							if (widget->can_vfill())
-							{
-								widget->set_size({widget->rect.h, widget->height_packed()+distribute_height});
-								remaining_height -= distribute_height;
-							}
-							else
-								widget->vpack();
-						// TODO: when remaining_height / fill_widgets_count has a remainder
-						return 0;
-					}
-
-					int total_height = 0;
-					for (Widget * widget : widgets)
-						total_height += widget->rect.h;
-
-					if (v_align == vertical_alignment_t::center)
-						return (h - total_height)/2;
-					if (v_align == vertical_alignment_t::bottom)
-						return h - container.border_width - container.padding - total_height;
-
-					return 0;
-				}();
-			
-			for (Widget * widget : widgets)
+			if (changed)
 			{
-				widget->rect.y = next_y;
-				next_y += widget->rect.h;
-				widget->rect.x = (w - widget->rect.w) / 2;
+				for (Widget * widget : container.widgets)
+					widget->_redraw();
 			}
-			return true; // suboptimal	
+
+			return changed;
+		}
+
+		bool calculate_new_w(Container & container)
+		{
+			bool changed = false;
+			switch(hpolicy.sizing)
+			{
+				case horizontal_policy::sizing_t::none:
+					// do nothing
+					break;
+				case horizontal_policy::sizing_t::pack:
+				{
+					for (Widget * widget : container.widgets)
+						changed |= widget->hpack(false, false);
+					//int max_packed_width = 0;
+					//for (Widget * widget : container.widgets)
+					//	max_packed_width = std::max(max_packed_width, widget->width_packed());
+					//container.set_width(max_packed_width + 2*(container.border_width+container.padding), false, false);
+					break;
+				}
+				case horizontal_policy::sizing_t::justify:
+				{
+					int max_packed_width = 0;
+					for (Widget * widget : container.widgets)
+						max_packed_width = std::max(max_packed_width, widget->width_packed());
+					for (Widget * widget : container.widgets)
+						changed |= widget->set_width(max_packed_width, false, false);
+					break;
+				}
+				case horizontal_policy::sizing_t::fill:
+					for (Widget * widget : container.widgets)
+						changed |= widget->set_width(container.rect.w - 2*(container.border_width+container.padding), false, false);
+					break;
+			}
+			return changed;
+		}
+
+		bool calculate_new_x(Container & container)
+		{
+			bool changed = false;
+			if (hpolicy.alignment == horizontal_policy::alignment_t::center)
+				for (Widget * widget : container.widgets)
+				{
+					int new_x = (container.rect.w - widget->rect.w)/2;
+					changed |= (widget->rect.x != new_x);
+					widget->rect.x = new_x;
+				}
+			else if (hpolicy.alignment == horizontal_policy::alignment_t::right)
+				for (Widget * widget : container.widgets)
+				{
+					int new_x = container.rect.w - container.border_width - container.padding - widget->rect.w;
+					changed |= widget->rect.x != new_x;
+					widget->rect.x = new_x;
+				}
+			else // left or nonw
+				for (Widget * widget : container.widgets)
+				{
+					int new_x = container.border_width + container.padding;
+					changed |= widget->rect.x != new_x;
+					widget->rect.x = new_x;
+				}
+			return changed;
+		}
+
+		bool calculate_new_y(Container & container)
+		{
+			bool changed = false;
+			int y = [&](){
+					if (vpolicy.alignment == vertical_policy::alignment_t::center)
+					{
+						int total_height = 0;
+						for (Widget * widget : container.widgets)
+							total_height += widget->rect.h;
+						return (container.rect.h - total_height)/2;
+					}
+					else if (vpolicy.alignment == vertical_policy::alignment_t::bottom)
+					{
+						int total_height = 0;
+						for (Widget * widget : container.widgets)
+							total_height += widget->rect.h;
+						return container.rect.h - container.border_width - container.padding - total_height;
+					}
+					else // top or none
+					{
+						return container.border_width + container.padding;
+					}
+				}();
+			for (Widget * widget : container.widgets)
+			{
+				changed |= (widget->rect.y != y);
+				widget->rect.y = y;
+				y += widget->rect.h;
+			}
+			return changed;
+		}
+
+		bool calculate_new_h(Container & container)
+		{
+			bool changed = false;
+			if (vpolicy.sizing == vertical_policy::sizing_t::pack)
+			{
+				for (Widget * widget : container.widgets)
+					changed |= widget->vpack(false, false);
+			}
+			else if (vpolicy.sizing == vertical_policy::sizing_t::justify)
+			{
+				int max_packed_height = 0;
+				for (Widget * widget : container.widgets)
+					max_packed_height = std::max(max_packed_height, widget->height_packed());
+				for (Widget * widget : container.widgets)
+					changed |= widget->set_height(max_packed_height, false, false);
+			}
+			else if (vpolicy.sizing == vertical_policy::sizing_t::fill)
+			{
+				int min_total_height = 0;
+				int fill_widgets_count = 0;
+				for (Widget * widget : container.widgets)
+				{
+					min_total_height += widget->height_packed();
+					fill_widgets_count += widget->can_hfill();
+				}
+				if (fill_widgets_count != 0)
+				{
+					int surplus_height = container.rect.h - 2*(container.border_width+container.padding) - min_total_height;
+					int surplus_height_per_widget = surplus_height / fill_widgets_count;
+					int surplus_widgets = surplus_height % fill_widgets_count;
+					for (Widget * widget : container.widgets)
+					{
+						if (widget->can_hfill())
+						{
+							changed |= widget->set_height(widget->height_packed() + surplus_height_per_widget + (surplus_widgets>0), false, false);
+							surplus_height -= surplus_height_per_widget;
+							surplus_widgets -= (surplus_widgets>0);
+						}
+					}
+				}
+			}
+			else // none
+			{
+				// do nothing
+			}
+			return changed;
 		}
 	};
 	struct HLayout : Layout
 	{
-		horizontal_alignment_t h_align = horizontal_alignment_t::center;
-		  vertical_alignment_t v_align =   vertical_alignment_t::center;
+		horizontal_policy hpolicy;
+		  vertical_policy vpolicy;
 
 		HLayout() {}
-		HLayout(horizontal_alignment_t align)
-			: h_align(align)
+		HLayout(horizontal_policy h, vertical_policy v)
+			: hpolicy(h)
+			, vpolicy(v)
 		{}
 
-		virtual bool rearrange_widgets(const Container & container, [[maybe_unused]]int w, [[maybe_unused]]int h) override
-		{
-			auto & widgets = container.widgets;
-
-			int next_x = [&]() {
-					if (   v_align == vertical_alignment_t::top
-						|| v_align == vertical_alignment_t::justify  )
-						return container.border_width + container.padding;
-
-					int total_height = 0;
-					for (Widget * widget : widgets)
-						total_height += widget->rect.h;
-
-					if (v_align == vertical_alignment_t::center)
-						return (h - total_height)/2;
-					if (v_align == vertical_alignment_t::bottom)
-						return h - container.border_width - container.padding - total_height;
-
-					return 0;
-				}();
-			
-			for (Widget * widget : widgets)
-			{
-				widget->rect.x = next_x;
-				next_x += widget->rect.w;
-				widget->rect.y = (h - widget->rect.h) / 2;
-			}
-			return true; // suboptimal
-		}
-
-		// returns true if any change happened
-		virtual bool vpack(Container & container) override
+		virtual bool rearrange_widgets(Container & container) override
 		{
 			bool changed = false;
 
-			int min_height = 0;
-			for (Widget * widget : container.widgets)
-				min_height = std::max(min_height, widget->height_packed());
-			
-			if (v_align == vertical_alignment_t::justify || v_align == vertical_alignment_t::fill)
+			changed |= calculate_new_w(container);
+			changed |= calculate_new_h(container);
+			changed |= calculate_new_x(container);
+			changed |= calculate_new_y(container);
+
+			if (changed)
 			{
+				for (Widget * widget : container.widgets)
+					widget->_redraw();
+			}
+
+			return changed;
+		}
+
+		bool calculate_new_h(Container & container)
+		{
+			bool changed = false;
+			switch(vpolicy.sizing)
+			{
+				case vertical_policy::sizing_t::none:
+					// do nothing
+					break;
+				case vertical_policy::sizing_t::pack:
+				{
+					for (Widget * widget : container.widgets)
+						changed |= widget->vpack(false, false);
+					//int max_packed_height = 0;
+					//for (Widget * widget : container.widgets)
+					//	max_packed_height = std::max(max_packed_height, widget->height_packed());
+					//container.set_height(max_packed_height + 2*(container.border_width+container.padding), false, false);
+					break;
+				}
+				case vertical_policy::sizing_t::justify:
+				{
+					int max_packed_height = 0;
+					for (Widget * widget : container.widgets)
+						max_packed_height = std::max(max_packed_height, widget->width_packed());
+					for (Widget * widget : container.widgets)
+						changed |= widget->set_height(max_packed_height, false, false);
+					break;
+				}
+				case vertical_policy::sizing_t::fill:
+					for (Widget * widget : container.widgets)
+						changed |= widget->set_height(container.rect.h - 2*(container.border_width+container.padding), false, false);
+					break;
+			}
+			return changed;
+		}
+
+		bool calculate_new_y(Container & container)
+		{
+			bool changed = false;
+			if (vpolicy.alignment == vertical_policy::alignment_t::center)
+				for (Widget * widget : container.widgets)
+					widget->rect.y = (container.rect.h - widget->rect.h)/2;
+			else if (vpolicy.alignment == vertical_policy::alignment_t::bottom)
+				for (Widget * widget : container.widgets)
+					widget->rect.y = container.rect.h - container.border_width - container.padding - widget->rect.h;
+			else // top or nonw
+				for (Widget * widget : container.widgets)
+					widget->rect.y = container.border_width + container.padding;
+			return changed;
+		}
+
+		bool calculate_new_x(Container & container)
+		{
+			bool changed = false;
+			int x = [&](){
+					if (hpolicy.alignment == horizontal_policy::alignment_t::center)
+					{
+						int total_width = 0;
+						for (Widget * widget : container.widgets)
+							total_width += widget->rect.w;
+						return (container.rect.w - total_width)/2;
+					}
+					else if (hpolicy.alignment == horizontal_policy::alignment_t::right)
+					{
+						int total_width = 0;
+						for (Widget * widget : container.widgets)
+							total_width += widget->rect.w;
+						return container.rect.w - container.border_width - container.padding - total_width;
+					}
+					else // left or none
+					{
+						return container.border_width + container.padding;
+					}
+				}();
+			for (Widget * widget : container.widgets)
+			{
+				changed |= (widget->rect.x != x);
+				widget->rect.x = x;
+				x += widget->rect.w;
+			}
+			return changed;
+		}
+
+		bool calculate_new_w(Container & container)
+		{
+			bool changed = false;
+			if (hpolicy.sizing == horizontal_policy::sizing_t::pack)
+			{
+				for (Widget * widget : container.widgets)
+					changed |= widget->hpack(false, false);
+			}
+			else if (hpolicy.sizing == horizontal_policy::sizing_t::justify)
+			{
+				int max_packed_width = 0;
+				for (Widget * widget : container.widgets)
+					max_packed_width = std::max(max_packed_width, widget->width_packed());
+				for (Widget * widget : container.widgets)
+					changed |= widget->set_width(max_packed_width, false, false);
+			}
+			else if (hpolicy.sizing == horizontal_policy::sizing_t::fill)
+			{
+				int min_total_width = 0;
+				int fill_widgets_count = 0;
 				for (Widget * widget : container.widgets)
 				{
-					widget->set_size({widget->rect.w,min_height});
-					widget->rect.y = container.border_width + container.padding + (min_height-widget->rect.h)/2;
-					changed = true;
+					min_total_width += widget->width_packed();
+					fill_widgets_count += widget->can_vfill();
 				}
-				container.set_size({container.rect.w, min_height + 2*(container.border_width + container.padding)});
-			}
-			else if (v_align == vertical_alignment_t::bottom)
-			{
-				for (Widget * widget : container.widgets)
-					if (widget->rect.h > min_height)
+				if (fill_widgets_count != 0)
+				{
+					int surplus_width = container.rect.w - 2*(container.border_width+container.padding) - min_total_width;
+					int surplus_width_per_widget = surplus_width / fill_widgets_count;
+					int surplus_widgets = surplus_width % fill_widgets_count;
+					for (Widget * widget : container.widgets)
 					{
-						int height_diff = widget->rect.h - min_height;
-						widget->rect.y += height_diff;
-						widget->set_size({widget->rect.w,min_height});
-						changed = true;
+						if (widget->can_hfill())
+						{
+							changed |= widget->set_width(widget->width_packed() + surplus_width_per_widget + (surplus_widgets>0), false, false);
+							//surplus_width -= surplus_width_per_widget;
+							surplus_widgets -= (surplus_widgets>0);
+						}
 					}
+				}
 			}
-			else
+			else // none
 			{
-				for (Widget * widget : container.widgets)
-					if (widget->rect.h > min_height)
-					{
-						widget->set_size({widget->rect.w,min_height});
-						changed = true;
-					}
+				// do nothing
 			}
 			return changed;
 		}
@@ -930,7 +1277,6 @@ struct OW
 			: Button(window, text, r, f)
 		{
 			this->border_width = 0;
-			this->pack(); // will redraw
 		}
 	};
 
@@ -943,9 +1289,8 @@ struct OW
 			this->border_width = 1;
 			this->border_is_sunken = false;
 
-			auto this_layout = std::make_unique<HLayout>();
-			this_layout->h_align = horizontal_alignment_t::left;
-			this_layout->v_align = vertical_alignment_t::justify;
+			auto this_layout = std::make_unique<HLayout>(horizontal_policy{horizontal_policy::alignment_t::left  , horizontal_policy::sizing_t::pack}
+			                                            ,  vertical_policy{  vertical_policy::alignment_t::center,   vertical_policy::sizing_t::pack});
 			this->set_layout(std::move(this_layout));
 
 			this->_redraw();
@@ -961,7 +1306,7 @@ struct OW
 		{
 			add_widget(&widget, do_redraw);
 		}
-		virtual bool can_vfill() override { return false; }	
+		virtual bool can_hfill() override { return false; }	
 	};
 
 
@@ -1004,6 +1349,8 @@ struct OW
 			: WSW::Window_t(title, width, height)
 			, container(this, Rect{0, 0, width, height})
 		{
+			container.border_width = 0;
+			container.padding = 0;
 			container.add_monitor(this);
 		}
 
