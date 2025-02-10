@@ -286,6 +286,14 @@ struct OW
 			return layout->rearrange_widgets(*this);
 		}
 
+		virtual bool pack() override
+		{
+			bool changed = Widget::pack();
+			if (changed)
+				layout->rearrange_widgets(*this);
+			return changed;
+		}
+
 		virtual bool vpack() override
 		{
 			int contents_height = 0;
@@ -353,6 +361,7 @@ struct OW
 
 		virtual void _redraw()
 		{
+			layout->rearrange_widgets(*this);
 			this->clear_background();
 			for (Widget *  widget : widgets)
 			{
@@ -1321,9 +1330,12 @@ struct OW
 
 
 
+	struct PopupMenu;
 
 	struct MenuItem : Button
 	{
+		std::unique_ptr<PopupMenu> submenu;
+
 		MenuItem(Window * window, std::string text, Rect r, std::function<void()> f)
 			: Button(window, text, r, f)
 		{
@@ -1349,8 +1361,68 @@ struct OW
 		}
 	};
 
+	struct PopupMenu : Container
+	{
+		std::vector<std::unique_ptr<MenuItem>> menu_items;
+
+		PopupMenu(Window * window)
+			: Container(window, {0,0,50,50})
+		{
+			this->border_color_light = this->border_color_dark;
+			this->color_bg = this->color_bg + (256-this->color_bg)/2;
+
+			this->border_is_sunken = false;
+			this->border_width = 1;
+			this->border_padding = 0;
+			this->inter_padding = 0;
+			this->set_layout(std::make_unique<VLayout>(horizontal_policy{horizontal_policy::alignment_t::left  , horizontal_policy::sizing_t::justify}
+			                                          ,  vertical_policy{  vertical_policy::alignment_t::center,   vertical_policy::sizing_t::pack}));
+		}
+
+		PopupMenu & add_submenu(std::string caption)
+		{
+			std::unique_ptr<MenuItem> menu_item = std::make_unique<MenuItem>(this->parent_window, caption, Rect{0,0,0,0}, [&](){});
+			MenuItem * menu_item_ptr = menu_item.get();
+			menu_item->submenu = std::make_unique<PopupMenu>(this->parent_window);
+			menu_item->submenu->parent_container = &this->parent_window->container;
+			menu_item->set_action([this,menu_item_ptr]()
+				{
+					menu_item_ptr->submenu->rect.x = menu_item_ptr->absolute_x() + menu_item_ptr->rect.w;
+					menu_item_ptr->submenu->rect.y = menu_item_ptr->absolute_y();
+					this->parent_window->add_popup(menu_item_ptr->submenu.get());
+				});
+			menu_items.push_back(std::move(menu_item));
+			Container::add_widget(menu_items.back().get());
+			return *menu_items.back()->submenu;
+		}
+		void add(std::string caption, std::function<void()> func)
+		{
+			std::unique_ptr<MenuItem> menu_item = std::make_unique<MenuItem>(this->parent_window, caption, Rect{0,0,0,0}, [this,func]()
+				{
+					this->parent_window->clear_popups();
+					func();
+				});
+			menu_items.push_back(std::move(menu_item));
+			Container::add_widget(menu_items.back().get());
+			this->pack();
+		}
+
+		//virtual void add_widget(Widget * widget) override
+		//{
+		//	Container::add_widget(widget);
+		//	this->pack();
+		//	this->set_needs_redraw();
+		//}
+		//void add_widget(Widget & widget)
+		//{
+		//	add_widget(&widget);
+		//}
+	};
+
 	struct MenuBar : Container
 	{
+		std::vector<std::unique_ptr<MenuItem>> menu_items;
+
 		MenuBar(Window * window)
 			: Container(window, {0,0,window->w,50})
 		{
@@ -1364,48 +1436,37 @@ struct OW
 			this->set_layout(std::move(this_layout));
 		}
 
-		virtual void add_widget(Widget * widget) override
+		PopupMenu & add_submenu(std::string caption)
 		{
-			Container::add_widget(widget);
+			std::unique_ptr<MenuItem> menu_item = std::make_unique<MenuItem>(this->parent_window, caption, Rect{0,0,0,0}, [](){});
+			MenuItem * menu_item_ptr = menu_item.get();
+			menu_item->submenu = std::make_unique<PopupMenu>(this->parent_window);
+			menu_item->submenu->parent_container = &this->parent_window->container;
+			menu_item->set_action([this,menu_item_ptr]()
+				{
+					menu_item_ptr->submenu->rect.x = menu_item_ptr->absolute_x();
+					menu_item_ptr->submenu->rect.y = menu_item_ptr->absolute_y() + menu_item_ptr->rect.h;
+					this->parent_window->add_popup(menu_item_ptr->submenu.get());
+				});
+			menu_items.push_back(std::move(menu_item));
+			Container::add_widget(menu_items.back().get());
+			return *menu_items.back()->submenu;
 		}
-		void add_widget(Widget & widget)
+		void add(std::string caption, std::function<void()> func)
 		{
-			add_widget(&widget);
+			std::unique_ptr<MenuItem> menu_item = std::make_unique<MenuItem>(this->parent_window, caption, Rect{0,0,0,0}, [this,func]()
+				{
+					this->parent_window->clear_popups();
+					func();
+				});
+			menu_items.push_back(std::move(menu_item));
+			Container::add_widget(menu_items.back().get());
 		}
+		//void add_widget(Widget & widget)
+		//{
+		//	add_widget(&widget);
+		//}
 		virtual bool can_hfill() override { return false; }
-	};
-
-	struct PopupMenu : Container
-	{
-		PopupMenu(Window * window)
-			: Container(window, {0,0,50,50})
-		{
-			this->color_bg = this->color_bg + (256-this->color_bg)/2;
-
-			this->border_is_sunken = false;
-			this->border_width = 1;
-			this->border_padding = 0;
-			this->inter_padding = 0;
-			this->set_layout(std::make_unique<VLayout>(horizontal_policy{horizontal_policy::alignment_t::left  , horizontal_policy::sizing_t::justify}
-			                                          ,  vertical_policy{  vertical_policy::alignment_t::center,   vertical_policy::sizing_t::pack}));
-		}
-
-		virtual void add_widget(Widget * widget) override
-		{
-			Container::add_widget(widget);
-
-			this->pack();
-			if (this->widgets.size() == 1)
-			{
-				this->rect.x = this->widgets[0]->absolute_x();
-				this->rect.y = this->widgets[0]->absolute_y() + this->widgets[0]->rect.h;
-			}
-			this->set_needs_redraw();
-		}
-		void add_widget(Widget & widget)
-		{
-			add_widget(&widget);
-		}
 	};
 
 	struct focus_holder
@@ -1471,6 +1532,11 @@ struct OW
 		{
 			menu->parent_container = &container;
 			popups.push_back(menu);
+			container.set_needs_redraw();
+		}
+		void clear_popups()
+		{
+			popups.clear();
 			container.set_needs_redraw();
 		}
 
