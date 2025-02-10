@@ -5,6 +5,27 @@
 #include "events.hpp"
 #include "util.hpp"
 
+struct color_t
+{
+	int r, g, b, a;
+	color_t(int x)
+		: r(x)
+		, g(x)
+		, b(x)
+		, a(255)
+	{}
+	const color_t & operator=(int x)
+	{
+		r = g = b = x;
+		a = 255;
+		return *this;
+	}
+	operator int() const
+	{
+		return (r+g+b)/3;
+	}
+};
+
 enum class widget_change_t
 {
 	any = 0,
@@ -78,8 +99,8 @@ struct OW
 		bool border_is_sunken = false;
 		int border_color_light = 220;
 		int border_color_dark  =  64;
-		int border_color_black =   0;
-		int color_bg = 192;
+		color_t border_color_black = color_t(  0);
+		color_t color_bg = color_t(192);
 
 		int border_padding = 2;
 		int inter_padding = 4;
@@ -91,6 +112,21 @@ struct OW
 
 		int w() const { return this->rect.w; }
 		int h() const { return this->rect.h; }
+
+		int absolute_x() const
+		{
+			if (parent_container)
+				return rect.x + parent_container->absolute_x();
+			else
+				return rect.x;
+		}
+		int absolute_y() const
+		{
+			if (parent_container)
+				return rect.y + parent_container->absolute_y();
+			else
+				return rect.y;
+		}
 
 		bool has_focus()
 		{
@@ -130,7 +166,7 @@ struct OW
 
 		virtual void clear_background()
 		{
-			this->drawable_area.fill(this->color_bg, this->color_bg, this->color_bg);
+			this->drawable_area.fill(this->color_bg.r, this->color_bg.g, this->color_bg.b, this->color_bg.a);
 		}
 		virtual void draw_border()
 		{
@@ -250,6 +286,39 @@ struct OW
 		virtual bool on_size_set() override
 		{
 			return layout->rearrange_widgets(*this);
+		}
+
+		virtual bool vpack(bool redraw, bool notify) override
+		{
+			int contents_height = 0;
+			if (widgets.size() > 0)
+			{
+				int min_y = widgets[0]->rect.y;
+				int max_y = 0;
+				for (Widget * widget : widgets)
+				{
+					min_y = std::min(min_y, widget->rect.y);
+					max_y = std::max(max_y, widget->rect.y + widget->rect.h);
+				}
+				contents_height = max_y - min_y;
+			}
+			return this->set_height(contents_height + 2*(this->border_width + this->border_padding), redraw, notify);
+		}
+		virtual bool hpack(bool redraw, bool notify) override
+		{
+			int contents_width = 0;
+			if (widgets.size() > 0)
+			{
+				int min_x = widgets[0]->rect.x;
+				int max_x = 0;
+				for (Widget * widget : widgets)
+				{
+					min_x = std::min(min_x, widget->rect.x);
+					max_x = std::max(max_x, widget->rect.x + widget->rect.w);
+				}
+				contents_width = max_x - min_x;
+			}
+			return this->set_width(contents_width + 2*(this->border_width + this->border_padding), redraw, notify);
 		}
 
 		void set_layout(std::unique_ptr<Layout> new_layout)
@@ -509,9 +578,9 @@ struct OW
 		virtual void _redraw() override
 		{
 			if (is_horizontal)
-				this->drawable_area.fill_rect(0, split_position-thickness, this->rect.w, split_position+thickness, this->color_bg, this->color_bg, this->color_bg);
+				this->drawable_area.fill_rect(0, split_position-thickness, this->rect.w, split_position+thickness, this->color_bg.r, this->color_bg.g, this->color_bg.b, this->color_bg.a);
 			else
-				this->drawable_area.fill_rect(split_position-thickness, 0, split_position+thickness, this->rect.h, this->color_bg, this->color_bg, this->color_bg);
+				this->drawable_area.fill_rect(split_position-thickness, 0, split_position+thickness, this->rect.h, this->color_bg.r, this->color_bg.g, this->color_bg.b, this->color_bg.a);
 
 			this->drawable_area.copy_from(one.drawable_area, 0, 0);
 			if (is_horizontal)
@@ -659,6 +728,11 @@ struct OW
 			caption.add_monitor(this);
 			this->border_is_sunken = false;
 			_redraw();
+		}
+
+		void set_action(std::function<void()> f)
+		{
+			func = f;
 		}
 
 		virtual void notify(monitorable<text_change_t> *, text_change_t &) override
@@ -1304,6 +1378,7 @@ struct OW
 		MenuItem(Window * window, std::string text, Rect r, std::function<void()> f)
 			: Button(window, text, r, f)
 		{
+			this->color_bg.a = 0;
 			this->border_width = 0;
 		}
 	};
@@ -1338,6 +1413,36 @@ struct OW
 		virtual bool can_hfill() override { return false; }	
 	};
 
+	struct PopupMenu : Container
+	{
+		PopupMenu(Window * window)
+			: Container(window, {0,0,50,50})
+		{
+			this->color_bg = this->color_bg + (256-this->color_bg)/2;
+
+			this->border_is_sunken = false;
+			this->border_width = 1;
+			this->border_padding = 0;
+			this->inter_padding = 0;
+			this->set_layout(std::make_unique<VLayout>(horizontal_policy{horizontal_policy::alignment_t::left  , horizontal_policy::sizing_t::pack}
+			                                          ,  vertical_policy{  vertical_policy::alignment_t::center,   vertical_policy::sizing_t::pack}));
+		}
+
+		virtual void add_widget(Widget * widget, bool do_redraw = false) override
+		{
+			Container::add_widget(widget, do_redraw);
+			this->pack(true, true);
+			if (this->widgets.size() == 1)
+			{
+				this->rect.x = this->widgets[0]->absolute_x();
+				this->rect.y = this->widgets[0]->absolute_y() + this->widgets[0]->rect.h;
+			}
+		}
+		void add_widget(Widget & widget, bool do_redraw = false)
+		{
+			add_widget(&widget, do_redraw);
+		}
+	};
 
 	struct focus_holder
 	{

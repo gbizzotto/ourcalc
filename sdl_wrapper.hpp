@@ -318,7 +318,7 @@ struct DrawableArea
 		SDL_RenderCopy(renderer, texture, NULL, NULL);
 	}
 
-	void fill(int r, int g, int b)
+	void fill(int r, int g, int b, int a=255)
 	{
 		SDL_Rect rect;
 		rect.x = 0;
@@ -326,14 +326,14 @@ struct DrawableArea
 		rect.w = w;
 		rect.h = h;
 		SDL_SetRenderTarget(renderer, texture);
-	    SDL_SetRenderDrawColor(renderer, r, g, b, 255);
+	    SDL_SetRenderDrawColor(renderer, r, g, b, a);
 	    SDL_RenderFillRect(renderer, &rect);
 		SDL_SetRenderTarget(renderer, NULL);
 	}
-	void draw_line(int x1, int y1, int x2, int y2, int r, int g, int b)
+	void draw_line(int x1, int y1, int x2, int y2, int r, int g, int b, int a=255)
 	{
 		SDL_SetRenderTarget(renderer, texture);
-	    SDL_SetRenderDrawColor(renderer, r, g, b, 255);
+	    SDL_SetRenderDrawColor(renderer, r, g, b, a);
 		SDL_RenderDrawLine(renderer, x1, y1, x2, y2);
 		SDL_SetRenderTarget(renderer, NULL);
 	}
@@ -366,7 +366,7 @@ struct DrawableArea
 	    SDL_RenderDrawLine(renderer, x+w-1, y, x+w-1, y+h);
 		SDL_SetRenderTarget(renderer, NULL);
 	}
-	void fill_rect(int x, int y, int w, int h, int r, int g, int b)
+	void fill_rect(int x, int y, int w, int h, int r, int g, int b, int a=255)
 	{
 	    SDL_Rect rect;
 	    rect.x = x;
@@ -375,7 +375,7 @@ struct DrawableArea
 	    rect.h = h;
 
 		SDL_SetRenderTarget(renderer, texture);
-	    SDL_SetRenderDrawColor(renderer, r, g, b, 255);
+	    SDL_SetRenderDrawColor(renderer, r, g, b, a);
 	    SDL_RenderFillRect(renderer, &rect);
 		SDL_SetRenderTarget(renderer, NULL);
 	}
