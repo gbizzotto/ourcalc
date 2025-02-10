@@ -3,7 +3,7 @@
 
 #include <iostream>
 #include "events.hpp"
-#include "util.hpp"
+//#include "util.hpp"
 
 struct color_t
 {
@@ -87,11 +87,14 @@ struct OW
 		int x,y,w,h;
 	};
 
-	struct Widget : monitorable<widget_change_t>
+	struct Widget
 	{
 		Container * parent_container = nullptr;
 		Rect rect;
 		WSW::DrawableArea_t drawable_area;
+
+		bool needs_redraw = true;
+
 		bool _focus = false;
 		bool _mouse_grabbed = false;
 
@@ -139,14 +142,17 @@ struct OW
 		void take_focus()
 		{
 			if (parent_container)
+			{
 				parent_container->set_focus(this);
+				set_needs_redraw();
+			}
 		}
 		void set_focus(bool has)
 		{
 			if (has != _focus)
 			{
 				_focus = has;
-				this->_redraw();
+				set_needs_redraw();
 			}
 		}
 		void set_mouse_grabbed(bool grabbed)
@@ -164,6 +170,13 @@ struct OW
 				parent_container->mouse_release(this);
 		}
 
+		void set_needs_redraw()
+		{
+			this->needs_redraw = true;
+			if (parent_container)
+				parent_container->set_needs_redraw();
+		}
+
 		virtual void clear_background()
 		{
 			this->drawable_area.fill(this->color_bg.r, this->color_bg.g, this->color_bg.b, this->color_bg.a);
@@ -178,43 +191,37 @@ struct OW
 				this->drawable_area.draw_3d_rect(0, 0, rect.w, rect.h, border_color_light, border_color_dark, border_is_sunken);
 		}
 
-		virtual bool pack(bool redraw, bool notify)
+		virtual bool pack()
 		{
-			return vpack(redraw, notify) | hpack(redraw, notify);
+			return vpack() | hpack();
 		}
-		virtual bool vpack(bool, bool) { return false; }
-		virtual bool hpack(bool, bool) { return false; }
+		virtual bool vpack() { return false; }
+		virtual bool hpack() { return false; }
 
 		virtual bool on_width_set() { return false; }
 		virtual bool on_height_set() { return false; }
 		virtual bool on_size_set() { return false; }
-		virtual bool set_width(int width, bool redraw, bool notify)
+		virtual bool set_width(int width)
 		{
 			if (rect.w == width)
 				return false;
 			rect.w = width;
 			drawable_area.set_size({rect.w, rect.h});
 			on_width_set();
-			if (redraw)
-				_redraw();
-			if (notify)
-				notify_monitors(widget_change_t::resized);
+			set_needs_redraw();
 			return true;
 		}
-		virtual bool set_height(int height, bool redraw, bool notify)
+		virtual bool set_height(int height)
 		{
 			if (rect.h == height)
 				return false;
 			rect.h = height;
 			drawable_area.set_size({rect.w, rect.h});
 			on_height_set();
-			if (redraw)
-				_redraw();
-			if (notify)
-				notify_monitors(widget_change_t::resized);
+			set_needs_redraw();
 			return true;
 		}
-		virtual bool set_size(std::pair<int,int> size, bool redraw, bool notify)
+		virtual bool set_size(std::pair<int,int> size)
 		{
 			if (rect.w == std::get<0>(size) && rect.h == std::get<1>(size))
 				return false;
@@ -222,10 +229,7 @@ struct OW
 			rect.h = std::get<1>(size);
 			drawable_area.set_size(size);
 			on_size_set();
-			if (redraw)
-				_redraw();
-			if (notify)
-				notify_monitors(widget_change_t::resized);
+			set_needs_redraw();
 			return true;
 		}
 		virtual bool focusable() { return true; }
@@ -241,13 +245,13 @@ struct OW
 	struct Layout
 	{
 		virtual bool rearrange_widgets(Container &) { return false; }
-		virtual bool vpack(Container &, bool, bool) { return false; }
-		virtual bool hpack(Container &, bool, bool) { return false; }
+		virtual bool vpack(Container &) { return false; }
+		virtual bool hpack(Container &) { return false; }
 		virtual int  width_packed(Container &) { return 0; }
 		virtual int height_packed(Container &) { return 0; }
 	};
 
-	struct Container : Widget, monitor<widget_change_t>
+	struct Container : Widget
 	{
 		Window * parent_window;
 		std::vector<Widget*> widgets;
@@ -259,7 +263,6 @@ struct OW
 			, layout(std::make_unique<Layout>())
 		{
 			this->border_width = 0;
-			_redraw();
 		}
 		/*Container(Container * container, Rect r)
 			: Widget(container, r)
@@ -269,11 +272,6 @@ struct OW
 			this->border_width = 0;
 			_redraw();
 		}*/
-		~Container()
-		{
-			for (Widget * widget : this->widgets)
-				widget->remove_monitor(this);
-		}
 
 		virtual bool on_width_set() override
 		{
@@ -288,7 +286,7 @@ struct OW
 			return layout->rearrange_widgets(*this);
 		}
 
-		virtual bool vpack(bool redraw, bool notify) override
+		virtual bool vpack() override
 		{
 			int contents_height = 0;
 			if (widgets.size() > 0)
@@ -302,9 +300,9 @@ struct OW
 				}
 				contents_height = max_y - min_y;
 			}
-			return this->set_height(contents_height + 2*(this->border_width + this->border_padding), redraw, notify);
+			return this->set_height(contents_height + 2*(this->border_width + this->border_padding));
 		}
-		virtual bool hpack(bool redraw, bool notify) override
+		virtual bool hpack() override
 		{
 			int contents_width = 0;
 			if (widgets.size() > 0)
@@ -318,41 +316,26 @@ struct OW
 				}
 				contents_width = max_x - min_x;
 			}
-			return this->set_width(contents_width + 2*(this->border_width + this->border_padding), redraw, notify);
+			return this->set_width(contents_width + 2*(this->border_width + this->border_padding));
 		}
 
 		void set_layout(std::unique_ptr<Layout> new_layout)
 		{
 			layout = std::move(new_layout);
 			layout->rearrange_widgets(*this);
-			_redraw();
+			this->set_needs_redraw();
 		}
 
-		virtual void add_widget(Widget * widget, bool do_redraw = false)
+		virtual void add_widget(Widget * widget)
 		{
 			widget->parent_container = this;
 			widgets.push_back(widget);
-			widget->add_monitor(this);
 			layout->rearrange_widgets(*this);
-			if (do_redraw)
-				_redraw();
+			this->set_needs_redraw();
 		}
-		void add_widget(Widget & widget, bool do_redraw = false)
+		void add_widget(Widget & widget)
 		{
-			add_widget(&widget, do_redraw);
-		}
-
-		virtual void notify(monitorable<widget_change_t> *, widget_change_t & ev) override
-		{
-			if (ev == widget_change_t::resized)
-			{
-				if (layout->rearrange_widgets(*this))
-					_redraw();
-			}
-			else
-			{
-				_redraw();
-			}
+			add_widget(&widget);
 		}
 
 		void set_focus(Widget * widg)
@@ -372,11 +355,12 @@ struct OW
 		{
 			this->clear_background();
 			for (Widget *  widget : widgets) {
-				//widget->_redraw();
+				if (widget->needs_redraw)
+					widget->_redraw();
 				this->drawable_area.copy_from(widget->drawable_area, widget->rect.x, widget->rect.y);
 			}
 			this->draw_border();
-			this->notify_monitors(widget_change_t::redrawn);
+			this->needs_redraw = false;
 		}
 
 		Widget * find_widget_at(int x, int y)
@@ -427,22 +411,14 @@ struct OW
 
 
 
-	struct Label : Widget, monitor<text_change_t>
+	struct Label : Widget
 	{
 		Text caption;
 
 		Label(Window * window, std::string text, Rect r)
 			: Widget(window, r)
 			, caption(std::move(text), window)
-		{
-			caption.add_monitor(this);
-			_redraw();
-		}
-
-		virtual void notify(monitorable<text_change_t> *, text_change_t &) override
-		{
-			_redraw();
-		}
+		{}
 
 		virtual bool focusable() override { return false; }
 		virtual void _redraw() override
@@ -451,20 +427,20 @@ struct OW
 			int y = (this->rect.h - caption.h) / 2;
 			this->drawable_area.fill(128,128,128);
 			this->drawable_area.copy_from(caption, 0, y);
-			this->notify_monitors(widget_change_t::redrawn);
+			this->needs_redraw = false;
 		}
 
-		virtual bool pack(bool redraw, bool notify) override
+		virtual bool pack() override
 		{
-			return this->set_size(caption.get_size(), redraw, notify);
+			return this->set_size(caption.get_size());
 		}
-		virtual bool hpack(bool redraw, bool notify) override
+		virtual bool hpack() override
 		{
-			return this->set_width(std::get<0>(caption.get_size()), redraw, notify);
+			return this->set_width(std::get<0>(caption.get_size()));
 		}
-		virtual bool vpack(bool redraw, bool notify) override
+		virtual bool vpack() override
 		{
-			return this->set_height(std::get<1>(caption.get_size()), redraw, notify);
+			return this->set_height(std::get<1>(caption.get_size()));
 		}
 		virtual int width_packed() override
 		{
@@ -476,7 +452,7 @@ struct OW
 		}
 	};
 
-	struct Splitter : Widget, monitor<widget_change_t>
+	struct Splitter : Container
 	{
 		int thickness = 6;
 		bool is_horizontal;
@@ -484,7 +460,7 @@ struct OW
 		Container one, two;
 
 		Splitter(Window * window, Rect r, bool is_horizontal)
-			: Widget(window, r)
+			: Container(window, r)
 			, is_horizontal(is_horizontal)
 			, split_position((is_horizontal?r.h:r.w)/2)
 			, one(window, Rect{                                  0,                                   0, is_horizontal?r.w:((r.w-thickness)/2), is_horizontal?((r.h-thickness)/2):r.h})
@@ -496,9 +472,9 @@ struct OW
 			two.border_is_sunken = true;
 			this->border_width = 0;
 			this->border_padding = 0;
-			one.add_monitor(this);
-			two.add_monitor(this);
-			_redraw();
+
+			this->add_widget(&one);
+			this->add_widget(&two);
 		}
 
 		virtual bool on_width_set() override
@@ -506,15 +482,15 @@ struct OW
 			bool changed = false;
 			if (is_horizontal)
 			{
-				changed |= one.set_width(this->rect.w, true, false);
-				changed |= two.set_width(this->rect.w, true, false);
+				changed |= one.set_width(this->rect.w);
+				changed |= two.set_width(this->rect.w);
 			}
 			else
 			{
-				changed |= one.set_width(split_position-thickness/2, true, false);
+				changed |= one.set_width(split_position-thickness/2);
 				changed |= (two.rect.x != split_position+thickness/2);
 				two.rect.x = split_position+thickness/2;
-				changed |= two.set_width(this->rect.w-split_position-thickness/2, true, false);
+				changed |= two.set_width(this->rect.w-split_position-thickness/2);
 			}
 			return changed;
 		}
@@ -523,15 +499,15 @@ struct OW
 			bool changed = false;
 			if (is_horizontal)
 			{
-				changed |= one.set_height(split_position-thickness/2, true, false);
+				changed |= one.set_height(split_position-thickness/2);
 				changed = (two.rect.y != split_position+thickness/2);
 				two.rect.y = split_position+thickness/2;
-				changed |= two.set_height(this->rect.h-split_position-thickness/2, true, false);
+				changed |= two.set_height(this->rect.h-split_position-thickness/2);
 			}
 			else
 			{
-				changed |= one.set_height(this->rect.h, true, false);
-				changed |= two.set_height(this->rect.h, true, false);
+				changed |= one.set_height(this->rect.h);
+				changed |= two.set_height(this->rect.h);
 			}
 			return changed;
 		}
@@ -540,24 +516,19 @@ struct OW
 			bool changed = false;
 			if (is_horizontal)
 			{
-				changed |= one.set_size({this->rect.w, split_position-thickness/2}, true, false);
+				changed |= one.set_size({this->rect.w, split_position-thickness/2});
 				changed |= (two.rect.y != split_position+thickness/2);
 				two.rect.y = split_position+thickness/2;
-				changed |= two.set_size({this->rect.w, this->rect.h-split_position-thickness/2}, true, false);
+				changed |= two.set_size({this->rect.w, this->rect.h-split_position-thickness/2});
 			}
 			else
 			{
-				changed |= one.set_size({split_position-thickness/2, this->rect.h}, true, false);
+				changed |= one.set_size({split_position-thickness/2, this->rect.h});
 				changed = (two.rect.x != split_position+thickness/2);
 				two.rect.x = split_position+thickness/2;
-				changed |= two.set_size({this->rect.w-split_position-thickness/2, this->rect.h}, true, false);
+				changed |= two.set_size({this->rect.w-split_position-thickness/2, this->rect.h});
 			}
 			return changed;
-		}
-
-		virtual void notify(monitorable<widget_change_t> *, widget_change_t &) override
-		{
-			_redraw();
 		}
 
 		virtual bool focusable() override { return false; }
@@ -577,6 +548,10 @@ struct OW
 		}
 		virtual void _redraw() override
 		{
+			if (one.needs_redraw)
+				one._redraw();
+			if (two.needs_redraw)
+				two._redraw();
 			if (is_horizontal)
 				this->drawable_area.fill_rect(0, split_position-thickness, this->rect.w, split_position+thickness, this->color_bg.r, this->color_bg.g, this->color_bg.b, this->color_bg.a);
 			else
@@ -587,7 +562,8 @@ struct OW
 				this->drawable_area.copy_from(two.drawable_area, 0, split_position+thickness/2);
 			else
 				this->drawable_area.copy_from(two.drawable_area, split_position+thickness/2, 0);
-			this->notify_monitors(widget_change_t::redrawn);
+
+			this->needs_redraw = false;
 		}
 
 		/*virtual void pack() 
@@ -602,27 +578,22 @@ struct OW
 
 			split_position = p;
 
-			this->expect(&one, widget_change_t::resized, [](){});
-			this->expect(&one, widget_change_t::redrawn, [](){});
-			this->expect(&two, widget_change_t::resized, [](){});
-			this->expect(&two, widget_change_t::redrawn, [](){});
 			bool changed = false;
 			if (is_horizontal)
 			{
-				changed |= one.set_size({this->rect.w, split_position-thickness/2}, true, true);
+				changed |= one.set_size({this->rect.w, split_position-thickness/2});
 				changed |= (two.rect.y != split_position+thickness/2);
 				two.rect.y = split_position+thickness/2;
-				changed |= two.set_size({this->rect.w, this->rect.h-split_position-thickness/2}, true, true);
+				changed |= two.set_size({this->rect.w, this->rect.h-split_position-thickness/2});
 			}
 			else
 			{
-				changed |= one.set_size({split_position-thickness/2, this->rect.h}, true, false);
+				changed |= one.set_size({split_position-thickness/2, this->rect.h});
 				changed = (two.rect.x != split_position+thickness/2);
 				two.rect.x = split_position+thickness/2;
-				changed |= two.set_size({this->rect.w-split_position-thickness/2, this->rect.h}, true, true);
+				changed |= two.set_size({this->rect.w-split_position-thickness/2, this->rect.h});
 			}
-			if (changed)
-				_redraw();
+			this->set_needs_redraw();
 		}
 
 		virtual bool handle_event(event & ev) override
@@ -639,7 +610,7 @@ struct OW
 					{
 						if (ev.data.mouse.released)
 						{
-							this->mouse_release();
+							this->mouse_release(this);
 							break;
 						}
 						else if ( ! ev.data.mouse.pressed)
@@ -701,8 +672,6 @@ struct OW
 					ev.data.mouse.x -= sub_container.rect.x;
 					ev.data.mouse.y -= sub_container.rect.y;
 					bool processed = sub_container.handle_event(ev);
-					if (processed)
-						_redraw();
 					return processed;
 				}
 				case key:
@@ -714,7 +683,7 @@ struct OW
 		}
 	};
 
-	struct Button : Widget, monitor<text_change_t>
+	struct Button : Widget
 	{
 		bool pressed = false;
 		Text caption;
@@ -725,37 +694,30 @@ struct OW
 			, caption(t, window)
 			, func(std::move(f))
 		{
-			caption.add_monitor(this);
 			this->border_is_sunken = false;
-			_redraw();
 		}
 
 		void set_action(std::function<void()> f)
 		{
 			func = f;
 		}
-
-		virtual void notify(monitorable<text_change_t> *, text_change_t &) override
-		{
-			_redraw();
-		}
-
 		void set_text(std::string s)
 		{
 			caption.set_text(s);
+			this->set_needs_redraw();
 		}
 
-		virtual bool pack(bool redraw, bool notify) override
+		virtual bool pack() override
 		{
-			return this->set_size({2*this->border_width + 2*this->border_padding + caption.w, 2*this->border_width + 2*this->border_padding + caption.h}, redraw, notify);
+			return this->set_size({2*this->border_width + 2*this->border_padding + caption.w, 2*this->border_width + 2*this->border_padding + caption.h});
 		}
-		virtual bool hpack(bool redraw, bool notify) override
+		virtual bool hpack() override
 		{
-			return this->set_width(2*this->border_width + 2*this->border_padding + caption.w, redraw, notify);
+			return this->set_width(2*this->border_width + 2*this->border_padding + caption.w);
 		}
-		virtual bool vpack(bool redraw, bool notify) override
+		virtual bool vpack() override
 		{
-			return this->set_height(2*this->border_width + 2*this->border_padding + caption.h, redraw, notify);
+			return this->set_height(2*this->border_width + 2*this->border_padding + caption.h);
 		}
 		virtual int width_packed() override
 		{
@@ -781,7 +743,7 @@ struct OW
 			// Border
 			this->draw_border();
 
-			this->notify_monitors(widget_change_t::redrawn);
+			this->needs_redraw = false;
 		}
 
 		virtual bool handle_event(event & ev) override
@@ -801,7 +763,6 @@ struct OW
 						pressed = true; 
 						this->border_is_sunken = true;
 						this->take_focus();
-						_redraw();
 						return true;
 					}
 					else
@@ -811,7 +772,7 @@ struct OW
 						pressed = false;
 						this->border_is_sunken = false;
 						event_clicked();
-						_redraw();
+						this->set_needs_redraw();
 						return true;
 					}
 					return true;
@@ -832,7 +793,7 @@ struct OW
 	};
 
 
-	struct TextEdit : Widget, monitor<text_change_t>
+	struct TextEdit : Widget
 	{
 		Text caption;
 		int text_x;
@@ -845,15 +806,8 @@ struct OW
 			, caption(t, window)
 		{
 			this->border_is_sunken = true;
-			caption.add_monitor(this);
 			this->border_padding = 5;
 			this->color_bg = 255;
-			_redraw();
-		}
-
-		virtual void notify(monitorable<text_change_t> *, text_change_t &) override
-		{
-			_redraw();
 		}
 
 		void set_text(std::string s)
@@ -861,17 +815,17 @@ struct OW
 			caption.set_text(s);
 		}
 
-		virtual bool pack(bool redraw, bool notify) override
+		virtual bool pack() override
 		{
-			return this->set_size({2*this->border_width + 2*this->border_padding + caption.w, 2*this->border_width + 2*this->border_padding + caption.h}, redraw, notify);
+			return this->set_size({2*this->border_width + 2*this->border_padding + caption.w, 2*this->border_width + 2*this->border_padding + caption.h});
 		}
-		virtual bool hpack(bool redraw, bool notify) override
+		virtual bool hpack() override
 		{
-			return this->set_width(2*this->border_width + 2*this->border_padding + caption.w, redraw, notify);
+			return this->set_width(2*this->border_width + 2*this->border_padding + caption.w);
 		}
-		virtual bool vpack(bool redraw, bool notify) override
+		virtual bool vpack() override
 		{
-			return this->set_height(2*this->border_width + 2*this->border_padding + caption.h, redraw, notify);
+			return this->set_height(2*this->border_width + 2*this->border_padding + caption.h);
 		}
 		virtual int width_packed() override
 		{
@@ -898,7 +852,7 @@ struct OW
 			// Border
 			this->draw_border();
 
-			this->notify_monitors(widget_change_t::redrawn);
+			this->needs_redraw = false;
 		}
 
 
@@ -917,7 +871,7 @@ struct OW
 						this->take_focus();
 						char_pos = caption.get_pos_at(ev.data.mouse.x - text_x);
 						cursor_x = text_x + caption.get_char_x(char_pos);
-						_redraw();
+						this->set_needs_redraw();
 						return true;
 					}
 					return false;
@@ -999,7 +953,7 @@ struct OW
 
 			if (caption_changed || cursor_changed)
 			{
-				_redraw();
+				this->set_needs_redraw();
 				return true;
 			}
 			return false;
@@ -1044,10 +998,7 @@ struct OW
 			changed |= calculate_new_y(container);
 
 			if (changed)
-			{
-				for (Widget * widget : container.widgets)
-					widget->_redraw();
-			}
+				container.set_needs_redraw();
 
 			return changed;
 		}
@@ -1063,7 +1014,7 @@ struct OW
 				case horizontal_policy::sizing_t::pack:
 				{
 					for (Widget * widget : container.widgets)
-						changed |= widget->hpack(false, false);
+						changed |= widget->hpack();
 					//int max_packed_width = 0;
 					//for (Widget * widget : container.widgets)
 					//	max_packed_width = std::max(max_packed_width, widget->width_packed());
@@ -1076,12 +1027,12 @@ struct OW
 					for (Widget * widget : container.widgets)
 						max_packed_width = std::max(max_packed_width, widget->width_packed());
 					for (Widget * widget : container.widgets)
-						changed |= widget->set_width(max_packed_width, false, false);
+						changed |= widget->set_width(max_packed_width);
 					break;
 				}
 				case horizontal_policy::sizing_t::fill:
 					for (Widget * widget : container.widgets)
-						changed |= widget->set_width(container.rect.w - 2*(container.border_width+container.border_padding), false, false);
+						changed |= widget->set_width(container.rect.w - 2*(container.border_width+container.border_padding));
 					break;
 			}
 			return changed;
@@ -1152,7 +1103,7 @@ struct OW
 			if (vpolicy.sizing == vertical_policy::sizing_t::pack)
 			{
 				for (Widget * widget : container.widgets)
-					changed |= widget->vpack(false, false);
+					changed |= widget->vpack();
 			}
 			else if (vpolicy.sizing == vertical_policy::sizing_t::justify)
 			{
@@ -1160,7 +1111,7 @@ struct OW
 				for (Widget * widget : container.widgets)
 					max_packed_height = std::max(max_packed_height, widget->height_packed());
 				for (Widget * widget : container.widgets)
-					changed |= widget->set_height(max_packed_height, false, false);
+					changed |= widget->set_height(max_packed_height);
 			}
 			else if (vpolicy.sizing == vertical_policy::sizing_t::fill)
 			{
@@ -1180,7 +1131,7 @@ struct OW
 					{
 						if (widget->can_hfill())
 						{
-							changed |= widget->set_height(widget->height_packed() + surplus_height_per_widget + (surplus_widgets>0), false, false);
+							changed |= widget->set_height(widget->height_packed() + surplus_height_per_widget + (surplus_widgets>0));
 							surplus_height -= surplus_height_per_widget;
 							surplus_widgets -= (surplus_widgets>0);
 						}
@@ -1215,10 +1166,7 @@ struct OW
 			changed |= calculate_new_y(container);
 
 			if (changed)
-			{
-				for (Widget * widget : container.widgets)
-					widget->_redraw();
-			}
+				container.set_needs_redraw();
 
 			return changed;
 		}
@@ -1250,7 +1198,7 @@ struct OW
 				case vertical_policy::sizing_t::pack:
 				{
 					for (Widget * widget : container.widgets)
-						changed |= widget->vpack(false, false);
+						changed |= widget->vpack();
 					//int max_packed_height = 0;
 					//for (Widget * widget : container.widgets)
 					//	max_packed_height = std::max(max_packed_height, widget->height_packed());
@@ -1263,12 +1211,12 @@ struct OW
 					for (Widget * widget : container.widgets)
 						max_packed_height = std::max(max_packed_height, widget->height_packed());
 					for (Widget * widget : container.widgets)
-						changed |= widget->set_height(max_packed_height, false, false);
+						changed |= widget->set_height(max_packed_height);
 					break;
 				}
 				case vertical_policy::sizing_t::fill:
 					for (Widget * widget : container.widgets)
-						changed |= widget->set_height(container.rect.h - 2*(container.border_width+container.border_padding), false, false);
+						changed |= widget->set_height(container.rect.h - 2*(container.border_width+container.border_padding));
 					break;
 			}
 			return changed;
@@ -1327,7 +1275,7 @@ struct OW
 			if (hpolicy.sizing == horizontal_policy::sizing_t::pack)
 			{
 				for (Widget * widget : container.widgets)
-					changed |= widget->hpack(false, false);
+					changed |= widget->hpack();
 			}
 			else if (hpolicy.sizing == horizontal_policy::sizing_t::justify)
 			{
@@ -1335,7 +1283,7 @@ struct OW
 				for (Widget * widget : container.widgets)
 					max_packed_width = std::max(max_packed_width, widget->width_packed());
 				for (Widget * widget : container.widgets)
-					changed |= widget->set_width(max_packed_width, false, false);
+					changed |= widget->set_width(max_packed_width);
 			}
 			else if (hpolicy.sizing == horizontal_policy::sizing_t::fill)
 			{
@@ -1355,7 +1303,7 @@ struct OW
 					{
 						if (widget->can_hfill())
 						{
-							changed |= widget->set_width(widget->width_packed() + surplus_width_per_widget + (surplus_widgets>0), false, false);
+							changed |= widget->set_width(widget->width_packed() + surplus_width_per_widget + (surplus_widgets>0));
 							//surplus_width -= surplus_width_per_widget;
 							surplus_widgets -= (surplus_widgets>0);
 						}
@@ -1381,6 +1329,23 @@ struct OW
 			this->color_bg.a = 0;
 			this->border_width = 0;
 		}
+		virtual void _redraw() override
+		{			
+			int offset = this->pressed;
+
+			this->clear_background();
+
+			// Text
+			this->caption.render();
+			int x = this->border_width + this->border_padding;
+			int y = (this->rect.h - this->caption.h) / 2 + offset;
+			this->drawable_area.copy_from(this->caption, x, y);
+
+			// Border
+			this->draw_border();
+
+			this->needs_redraw = false;
+		}
 	};
 
 	struct MenuBar : Container
@@ -1396,21 +1361,17 @@ struct OW
 			auto this_layout = std::make_unique<HLayout>(horizontal_policy{horizontal_policy::alignment_t::left  , horizontal_policy::sizing_t::pack}
 			                                            ,  vertical_policy{  vertical_policy::alignment_t::center,   vertical_policy::sizing_t::pack});
 			this->set_layout(std::move(this_layout));
-
-			this->_redraw();
 		}
 
-		virtual void add_widget(Widget * widget, bool do_redraw = false) override
+		virtual void add_widget(Widget * widget) override
 		{
-			Container::add_widget(widget, do_redraw);
-			//if (this->vpack() && do_redraw)
-			//	this->_redraw();
+			Container::add_widget(widget);
 		}
-		void add_widget(Widget & widget, bool do_redraw = false)
+		void add_widget(Widget & widget)
 		{
-			add_widget(&widget, do_redraw);
+			add_widget(&widget);
 		}
-		virtual bool can_hfill() override { return false; }	
+		virtual bool can_hfill() override { return false; }
 	};
 
 	struct PopupMenu : Container
@@ -1424,23 +1385,25 @@ struct OW
 			this->border_width = 1;
 			this->border_padding = 0;
 			this->inter_padding = 0;
-			this->set_layout(std::make_unique<VLayout>(horizontal_policy{horizontal_policy::alignment_t::left  , horizontal_policy::sizing_t::pack}
+			this->set_layout(std::make_unique<VLayout>(horizontal_policy{horizontal_policy::alignment_t::left  , horizontal_policy::sizing_t::justify}
 			                                          ,  vertical_policy{  vertical_policy::alignment_t::center,   vertical_policy::sizing_t::pack}));
 		}
 
-		virtual void add_widget(Widget * widget, bool do_redraw = false) override
+		virtual void add_widget(Widget * widget) override
 		{
-			Container::add_widget(widget, do_redraw);
-			this->pack(true, true);
+			Container::add_widget(widget);
+
+			this->pack();
 			if (this->widgets.size() == 1)
 			{
 				this->rect.x = this->widgets[0]->absolute_x();
 				this->rect.y = this->widgets[0]->absolute_y() + this->widgets[0]->rect.h;
 			}
+			this->set_needs_redraw();
 		}
-		void add_widget(Widget & widget, bool do_redraw = false)
+		void add_widget(Widget & widget)
 		{
-			add_widget(&widget, do_redraw);
+			add_widget(&widget);
 		}
 	};
 
@@ -1473,7 +1436,7 @@ struct OW
 		operator Widget*() { return widget; }
 	};
 
-	struct Window : public WSW::Window_t, monitor<widget_change_t>
+	struct Window : public WSW::Window_t
 	{
 		Container container;
 		focus_holder focus;
@@ -1483,9 +1446,9 @@ struct OW
 			: WSW::Window_t(title, width, height)
 			, container(this, Rect{0, 0, width, height})
 		{
-			container.border_width = 0;
 			container.border_padding = 0;
-			container.add_monitor(this);
+			container.inter_padding = 0;
+			container.border_width  = 0;
 		}
 
 		void set_focus(Widget * widg)
@@ -1509,8 +1472,7 @@ struct OW
 				case nop:
 					return true;
 				case window_shown:
-					_redraw();
-					return true;
+					break;
 				case mouse:
 				{
 					Widget * widget = nullptr;
@@ -1522,7 +1484,7 @@ struct OW
 					{
 						ev.data.mouse.x -= widget->rect.x;
 						ev.data.mouse.y -= widget->rect.y;
-						return widget->handle_event(ev);
+						widget->handle_event(ev);
 					}
 					break;
 				}
@@ -1530,30 +1492,22 @@ struct OW
 				{
 					Widget * widget = focus;
 					if (widget)
-						return widget->handle_event(ev);
+						widget->handle_event(ev);
 					break;
 				}
 			}
+			_redraw();
 			return false;
-		}
-
-		virtual void notify(monitorable<widget_change_t> *, widget_change_t & ev) override
-		{
-			if (ev == widget_change_t::resized)
-			{
-				_redraw();
-			}
-			else if (ev == widget_change_t::redrawn)
-			{
-				_redraw();
-			}
 		}
 
 		virtual void _redraw()
 		{
-			//container._redraw();
-			container.drawable_area.refresh_window();
-			WSW::Window_t::present();
+			if (container.needs_redraw)
+			{
+				container._redraw();
+				container.drawable_area.refresh_window();
+				WSW::Window_t::present();
+			}
 		}	
 	};
 
@@ -1565,7 +1519,6 @@ struct OW
 		Window & make_window(const char * title="", int width=1280, int height=1024)
 		{
 			auto & w = window_system_wrapper.template make_window<W>(title, width, height);
-			w._redraw();
 			return w;
 		}
 

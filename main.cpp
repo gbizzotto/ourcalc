@@ -39,10 +39,6 @@ struct my_window : OurW::Window
 		, menufile_open(this, "Open...", {0,0,10,10}, [&](){  })
 		, menufile_quit(this, "Quit", {0,0,10,10}, [&](){ exit(0); })
 	{
-		this->container.border_padding = 0;
-		this->container.inter_padding = 0;
-		this->container.border_width  = 0;
-
 		this->top_container.border_padding = 0;
 		this->top_container.inter_padding = 0;
 		this->top_container.border_width = 0;
@@ -51,34 +47,33 @@ struct my_window : OurW::Window
 
 		middle_container.set_layout(std::make_unique<OurW::VLayout>(horizontal_policy{horizontal_policy::alignment_t::left, horizontal_policy::sizing_t::fill}
 		                                                           ,  vertical_policy{  vertical_policy::alignment_t::top ,   vertical_policy::sizing_t::fill}));
-		butt1.pack(true, true);
-		text1.pack(true, true);
+		butt1.pack();
+		text1.pack();
 
 		this->top_container.add_widget(menubar1);
-		menubar1.set_height(menufile.height_packed() + 2*(menubar1.border_width+menubar1.border_padding), false, false);
-		menubar1.add_widget(menufile, true);
-		menubar1.add_widget(menuedit, true);
-		this->top_container.add_widget(middle_container, true);
+		menubar1.set_height(menufile.height_packed() + 2*(menubar1.border_width+menubar1.border_padding));
+		menubar1.add_widget(menufile);
+		menubar1.add_widget(menuedit);
+		this->top_container.add_widget(middle_container);
 		middle_container.border_padding = 0;
-		middle_container.add_widget(split1, true);
+		middle_container.add_widget(split1);
 		split1.one.add_widget(butt1 );
-		split1.one.add_widget(butt2 , true);
-		split1.two.add_widget(text1 );
-		split1.two.add_widget(label1, true);
-		
-		split1.two.set_layout(std::make_unique<OurW::VLayout>(horizontal_policy{horizontal_policy::alignment_t::center, horizontal_policy::sizing_t::justify}
+		split1.one.add_widget(butt2 );
+		split1.one.add_widget(text1 );
+		split1.one.add_widget(label1);
+		split1.one.set_layout(std::make_unique<OurW::VLayout>(horizontal_policy{horizontal_policy::alignment_t::center, horizontal_policy::sizing_t::justify}
 		                                                     ,  vertical_policy{  vertical_policy::alignment_t::center,   vertical_policy::sizing_t::justify}));
 
 		menufile_popup.add_widget(menufile_open);
 		menufile_popup.add_widget(menufile_quit);
-		
+
 		menufile.set_action([&]()
 			{
 				this->container.add_widget(menufile_popup);
 				this->mouse_grab(&menufile_popup);
 			});
 
-		this->container.add_widget(top_container, true);
+		this->container.add_widget(top_container);
 	}
 };
 
