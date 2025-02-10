@@ -1,4 +1,6 @@
 
+#include <iostream>
+
 #include "sdl_wrapper.hpp"
 #include "our_windows.hpp"
 
@@ -27,7 +29,7 @@ struct my_window : OurW::Window
 		: OurW::Window(title, width, height)
 		, top_container(this, {0,0,width,height})
 		, menubar1(this)
-		, menufile(this, "File", {0,0,10,10}, [&](){})
+		, menufile(this, "File", {0,0,10,10}, [&](){ /*std::cout << "open clicked" << std::endl;*/ })
 		, menuedit(this, "Edit", {0,0,10,10}, [&](){ butt1.set_text("poiu"); })
 		, middle_container(this, {0,0,400,400})
 		, split1(this, {200, 200, 400, 400}, false)
@@ -69,8 +71,7 @@ struct my_window : OurW::Window
 
 		menufile.set_action([&]()
 			{
-				this->container.add_widget(menufile_popup);
-				this->mouse_grab(&menufile_popup);
+				this->add_popup(&menufile_popup);
 			});
 
 		this->container.add_widget(top_container);

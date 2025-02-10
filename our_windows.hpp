@@ -354,7 +354,8 @@ struct OW
 		virtual void _redraw()
 		{
 			this->clear_background();
-			for (Widget *  widget : widgets) {
+			for (Widget *  widget : widgets)
+			{
 				if (widget->needs_redraw)
 					widget->_redraw();
 				this->drawable_area.copy_from(widget->drawable_area, widget->rect.x, widget->rect.y);
@@ -1441,6 +1442,7 @@ struct OW
 		Container container;
 		focus_holder focus;
 		mouse_grabber mousegrab;
+		std::vector<PopupMenu*> popups;
 
 		Window(const char * title, int width, int height)
 			: WSW::Window_t(title, width, height)
@@ -1465,6 +1467,13 @@ struct OW
 				mousegrab(nullptr);
 		}
 
+		void add_popup(PopupMenu * menu)
+		{
+			menu->parent_container = &container;
+			popups.push_back(menu);
+			container.set_needs_redraw();
+		}
+
 		virtual bool handle_event(event ev) override
 		{
 			switch(ev.type)
@@ -1475,16 +1484,56 @@ struct OW
 					break;
 				case mouse:
 				{
-					Widget * widget = nullptr;
-					if (mousegrab)
-						widget = mousegrab;
-					else
-						widget = this->container.find_widget_at(ev.data.mouse.x, ev.data.mouse.y);
-					if (widget)
+					//std::cout << "win evt mouse, pressed " << ev.data.mouse.pressed << std::endl;
+					//std::cout << "win evt mouse, released " << ev.data.mouse.released << std::endl;
+					//std::cout << "win popu count " << popups.size() << std::endl;
+
+					bool event_caught_by_popup = false;
+
+					int x = ev.data.mouse.x;
+					int y = ev.data.mouse.y;
+					auto itr  = popups.rbegin();
+					auto endr = popups.rend();
+					for ( ; itr!=endr ; ++itr)
 					{
-						ev.data.mouse.x -= widget->rect.x;
-						ev.data.mouse.y -= widget->rect.y;
-						widget->handle_event(ev);
+						PopupMenu * popup = *itr;
+						if (   x >= popup->rect.x && x < popup->rect.x + popup->rect.w
+							&& y >= popup->rect.y && y < popup->rect.y + popup->rect.h )
+						{
+							auto ev2 = ev;
+							ev2.data.mouse.x -= popup->rect.x;
+							ev2.data.mouse.y -= popup->rect.y;
+							popup->handle_event(ev2);
+							event_caught_by_popup = true;
+							break;
+						}
+					}
+
+					if ( ! event_caught_by_popup)
+					{
+						if (ev.data.mouse.pressed)
+						{
+							if (popups.size() > 0)
+							{
+								if (itr == endr)
+									popups.clear();
+								else
+									popups.erase(std::next(itr).base(), popups.end());
+								container.set_needs_redraw();
+							}
+						}
+
+						Widget * widget = nullptr;
+						if (mousegrab)
+							widget = mousegrab;
+						else
+							widget = this->container.find_widget_at(x, y);
+						if (widget)
+						{
+							ev.data.mouse.x -= widget->rect.x;
+							ev.data.mouse.y -= widget->rect.y;
+							widget->handle_event(ev);
+						}
 					}
 					break;
 				}
@@ -1505,6 +1554,12 @@ struct OW
 			if (container.needs_redraw)
 			{
 				container._redraw();
+				for (PopupMenu * menu : popups)
+				{
+					if (menu->needs_redraw)
+						menu->_redraw();
+					container.drawable_area.copy_from(menu->drawable_area, menu->rect.x, menu->rect.y);
+				}
 				container.drawable_area.refresh_window();
 				WSW::Window_t::present();
 			}
