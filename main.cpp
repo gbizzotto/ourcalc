@@ -18,6 +18,7 @@ struct my_window : OurW::Window
 	OurW::Button butt2;
 	OurW::TextEdit text1;
 	OurW::Label label1;
+	OurW::Grid grid1;
 
 	my_window(const char * title, int width, int height)
 		: OurW::Window(title, width, height)
@@ -29,6 +30,7 @@ struct my_window : OurW::Window
 		, butt2(this, "button 2", {10,150,200,40}, [&](){ butt1.set_text("123"); })
 		, text1(this, "asdf", {10,200,200,40})
 		, label1(this, "gxb", {10,250,200,40})
+		, grid1(this)
 	{
 		this->top_container.border_padding = 0;
 		this->top_container.inter_padding = 0;
@@ -51,8 +53,13 @@ struct my_window : OurW::Window
 		split1.one.add_widget(label1);
 		split1.one.set_layout(std::make_unique<OurW::VLayout>(horizontal_policy{horizontal_policy::alignment_t::center, horizontal_policy::sizing_t::justify}
 		                                                     ,  vertical_policy{  vertical_policy::alignment_t::center,   vertical_policy::sizing_t::justify}));
+		split1.two.set_layout(std::make_unique<OurW::VLayout>(horizontal_policy{horizontal_policy::alignment_t::center, horizontal_policy::sizing_t::fill}
+		                                                     ,  vertical_policy{  vertical_policy::alignment_t::center,   vertical_policy::sizing_t::fill}));
+		split1.two.add_widget(grid1);
+		split1.two.border_padding = 0;
 
 		auto & menu_file = menubar.add_submenu("File");
+		/*auto & menu_edit = */menubar.add_submenu("Edit");
 		auto & menu_file_open = menu_file.add_submenu("Open");
 		menu_file.add("Quit", [](){ exit(0); });
 		menu_file_open.add("Aasdfasdflkjsadf" , [&](){ butt1.set_text("1"); });
@@ -66,6 +73,7 @@ struct my_window : OurW::Window
 
 int main()
 {
+	assert(number_to_column_code(26*27+26) == "ABA");
 	OurW::Manager wm;
 
 	/*auto & w = */wm.make_window<my_window>("Test", 1024, 768);

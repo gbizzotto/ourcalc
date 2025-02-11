@@ -2,8 +2,31 @@
 #pragma once
 
 #include <iostream>
+#include <vector>
+#include <deque>
+#include <assert.h>
+
 #include "events.hpp"
 //#include "util.hpp"
+
+std::string number_to_column_code(int zero_based_value)
+{
+	char dict[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+	const int dict_size = sizeof(dict) - 1;
+
+
+
+	std::string result;
+	do
+	{
+		unsigned int c = zero_based_value % dict_size;
+		zero_based_value /= dict_size;
+		--zero_based_value;
+		result.push_back(dict[c]);
+	}while(zero_based_value >= 0);
+	std::reverse(std::begin(result), std::end(result));
+	return result;
+}
 
 struct color_t
 {
@@ -1407,17 +1430,6 @@ struct OW
 			Container::add_widget(menu_items.back().get());
 			this->pack();
 		}
-
-		//virtual void add_widget(Widget * widget) override
-		//{
-		//	Container::add_widget(widget);
-		//	this->pack();
-		//	this->set_needs_redraw();
-		//}
-		//void add_widget(Widget & widget)
-		//{
-		//	add_widget(&widget);
-		//}
 	};
 
 	struct MenuBar : Container
@@ -1428,7 +1440,7 @@ struct OW
 			: Container(window, {0,0,window->w,50})
 		{
 			this->border_padding = 0;
-			this->inter_padding = 10;
+			this->inter_padding = 4;
 			this->border_width = 1;
 			this->border_is_sunken = false;
 
@@ -1463,12 +1475,236 @@ struct OW
 			menu_items.push_back(std::move(menu_item));
 			Container::add_widget(menu_items.back().get());
 		}
-		//void add_widget(Widget & widget)
-		//{
-		//	add_widget(&widget);
-		//}
 		virtual bool can_hfill() override { return false; }
 	};
+
+
+	struct Grid : Container
+	{
+		int header_columns_height = 18;
+		int header_rows_width = 40;
+
+		color_t color_text_header = color_t(32);
+		color_t color_lines       = color_t(160);
+		color_t color_bg_header   = color_t(210);
+
+		std::vector<std::vector<std::string>> formulas;
+		std::vector<std::vector<std::string>> values;
+
+		std::vector<unsigned int> thickness_columns;
+		std::vector<unsigned int> thickness_rows;
+
+		std::vector<unsigned int> selected_columns;
+		std::vector<unsigned int> selected_rows;
+		std::vector<std::pair<unsigned int,unsigned int>> selected_cells;		
+
+		std::deque<Text> header_captions_cols;
+		std::deque<Text> header_captions_rows;
+
+		Grid(Window * window)
+			: Container(window, {0,0,200,200})
+		{
+			this->border_width = 0;
+			this->border_padding = 0;
+			this-> inter_padding = 0;
+			this->color_bg = 255;
+
+			insert_columns(50, 0);
+			insert_rows(100, 0);
+		}
+
+		bool has_integrity() const
+		{
+			// row count
+			if (formulas.size() != values.size())
+				return false;
+			if (formulas.size() != thickness_rows.size())
+				return false;
+			if (formulas.size() < selected_rows.size())
+				return false;
+
+			// column count
+			unsigned int col_count = get_column_count();
+			for (auto & row : formulas)
+				if (row.size() != col_count)
+					return false;
+			for (auto & row : values)
+				if (row.size() != col_count)
+					return false;
+			if (thickness_rows.size() != col_count)
+				return false;
+			if (selected_columns.size() > col_count)
+				return false;
+
+			// selection
+			if (selected_cells.size() > get_column_count() * get_row_count())
+				return false;
+
+			return true;
+		}
+
+		unsigned int get_column_count() const
+		{
+			if (formulas.size() == 0)
+				return 0;
+			return formulas[0].size();
+		}
+		unsigned int get_row_count() const
+		{
+			return formulas.size();
+		}
+
+		void insert_columns(unsigned int count, unsigned int before_idx)
+		{
+			assert(has_integrity());
+
+			if (before_idx > get_column_count())
+				return;
+
+			for (auto & row : formulas)
+				row.insert(std::next(std::begin(row), before_idx), count, "");
+			for (auto & row : values)
+				row.insert(std::next(std::begin(row), before_idx), count, "");
+			thickness_columns.insert(std::next(std::begin(thickness_columns), before_idx), count, 50);
+
+			// column headers
+			for (decltype(count) i=0 ; i<count ; ++i)
+				header_captions_cols.emplace_back(number_to_column_code(header_captions_cols.size()), this->parent_window, color_text_header.r, color_text_header.g, color_text_header.b);
+		}
+		void insert_rows(unsigned int count, unsigned int before_idx)
+		{
+			assert(has_integrity());
+
+			if (before_idx > get_row_count())
+				return;
+
+			formulas.insert(std::next(std::begin(formulas), before_idx), count, std::vector<std::string>(count, ""));
+			values  .insert(std::next(std::begin(values  ), before_idx), count, std::vector<std::string>(count, ""));
+			thickness_rows.insert(std::next(std::begin(thickness_rows), before_idx), count, 18);
+
+			// row headers
+			for (decltype(count) i=0 ; i<count ; ++i)
+				header_captions_rows.emplace_back(std::to_string(header_captions_rows.size()), this->parent_window, color_text_header.r, color_text_header.g, color_text_header.b);
+		}
+
+		int get_total_width()
+		{
+			int total = header_rows_width;
+			for (int t : thickness_columns)
+				total += t;
+			return total;
+		}
+		int get_total_height()
+		{
+			int total = header_columns_height;
+			for (int t : thickness_rows)
+				total += t;
+			return total;
+		}
+
+		virtual void _redraw() override
+		{
+			this->clear_background();
+
+			int draw_width  = std::min(this->rect.w, get_total_width ());
+			int draw_height = std::min(this->rect.h, get_total_height());
+
+			// vertical lines
+			int x = header_rows_width;
+			this->drawable_area.draw_line(x, 0, x, draw_height, color_lines.r, color_lines.g, color_lines.b);
+			for (int thickness : thickness_columns)
+			{
+				x += thickness;
+				this->drawable_area.draw_line(x, 0, x, draw_height, color_lines.r, color_lines.g, color_lines.b);
+				if (x > draw_width)
+					break;
+			}
+
+			// horizontal lines
+			int y = header_columns_height;
+			this->drawable_area.draw_line(0, y, draw_width, y, color_lines.r, color_lines.g, color_lines.b);
+			for (int thickness : thickness_rows)
+			{
+				y += thickness;
+				this->drawable_area.draw_line(0, y, draw_width, y, color_lines.r, color_lines.g, color_lines.b);
+				if (y > draw_height)
+					break;
+			}
+
+			// column headers
+			x = header_rows_width;
+			int i = 0;
+			for (int thickness : thickness_columns)
+			{
+				int next_x = x + thickness;
+
+				// dark rectangle
+				this->drawable_area.fill_rect(x+1, 0, thickness-1, header_columns_height, color_bg_header.r, color_bg_header.g, color_bg_header.b);
+
+				int w_paste = header_captions_cols[i].w;
+				int h_paste = header_captions_cols[i].h;
+				int x_paste = (x+next_x)/2 - w_paste/2;
+				int y_paste = header_columns_height/2 - h_paste/2;
+
+				if (x_paste < x)
+				{
+					w_paste = thickness;
+					x_paste = x;
+				}
+				if (y_paste < 0)
+				{
+					h_paste = header_columns_height;
+					y_paste = 0;
+				}
+
+				this->drawable_area.copy_from(header_captions_cols[i], x_paste, y_paste, w_paste, h_paste);
+
+				if (x > draw_width)
+					break;
+
+				x = next_x;
+				++i;
+			}
+
+			// row headers
+			y = header_columns_height;
+			i = 0;
+			for (int thickness : thickness_rows)
+			{
+				int next_y = y + thickness;
+
+				// dark rectangle
+				this->drawable_area.fill_rect(0, y+1, header_rows_width, thickness-1, color_bg_header.r, color_bg_header.g, color_bg_header.b);
+
+				int w_paste = header_captions_rows[i].w;
+				int h_paste = header_captions_rows[i].h;
+				int x_paste = header_rows_width/2 - w_paste/2;
+				int y_paste = (y+next_y)/2 - h_paste/2;
+
+				if (y_paste < y)
+				{
+					h_paste = thickness;
+					y_paste = y;
+				}
+				if (x_paste < 0)
+				{
+					w_paste = header_rows_width;
+					x_paste = 0;
+				}
+
+				this->drawable_area.copy_from(header_captions_rows[i], x_paste, y_paste, w_paste, h_paste);
+
+				if (y > draw_height)
+					break;
+
+				y = next_y;
+				++i;
+			}
+
+			this->draw_border();
+		}
+	};
+
 
 	struct focus_holder
 	{

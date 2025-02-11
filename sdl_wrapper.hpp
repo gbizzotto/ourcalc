@@ -26,7 +26,7 @@ struct Window
 		: w(width)
 		, h(height)
 	{
-		sdl_window = SDL_CreateWindow(title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, SDL_WINDOW_SHOWN);
+		sdl_window = SDL_CreateWindow(title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
 		if ( ! sdl_window)
 			throw;
 
@@ -154,9 +154,11 @@ struct Text : monitorable<text_change_t>
 	int w, h;
 	std::string text;
 	std::vector<int> char_pos;
+	SDL_Color color;
 
-	Text(std::string s, Window * win)
+	Text(std::string s, Window * win, uint8_t r=64, uint8_t g=64, uint8_t b=64, uint8_t a=255)
 		: window(win)
+		, color{r, g, b, a}
 	{
 		set_text(s);
 	}
@@ -212,8 +214,6 @@ struct Text : monitorable<text_change_t>
 			SDL_FreeSurface(message_surface);
 
 		// pre-render text
-		SDL_Color color = {64,64,64,0};
-
 		message_surface = TTF_RenderText_Blended(window->font, text.c_str(), color);
 		message_texture = SDL_CreateTextureFromSurface(window->renderer, message_surface);
 		SDL_SetTextureBlendMode(message_texture, SDL_BLENDMODE_BLEND);
@@ -296,6 +296,26 @@ struct DrawableArea
 		rect.h = text.h;
 		SDL_SetRenderTarget(renderer, texture);
 		SDL_RenderCopy(renderer, text.message_texture, NULL, &rect);
+		SDL_SetRenderTarget(renderer, NULL);
+	}
+	void copy_from(Text & text, int x, int y, int _w, int _h)
+	{
+		SDL_Rect rect_src;
+		rect_src.x = 0;
+		rect_src.y = 0;
+		rect_src.w = _w;
+		rect_src.h = _h;
+		if (_w < text.w)
+			rect_src.x = (text.w-_w)/2;
+		if (_h < text.h)
+			rect_src.y = (text.h-_h)/2;
+		SDL_Rect rect_dest;
+		rect_dest.x = x;
+		rect_dest.y = y;
+		rect_dest.w = _w;
+		rect_dest.h = _h;
+		SDL_SetRenderTarget(renderer, texture);
+		SDL_RenderCopy(renderer, text.message_texture, &rect_src, &rect_dest);
 		SDL_SetRenderTarget(renderer, NULL);
 	}
 	void refresh_window()
