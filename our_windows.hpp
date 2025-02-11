@@ -1341,6 +1341,7 @@ struct OW
 		{
 			this->color_bg.a = 0;
 			this->border_width = 0;
+			this->border_padding = 6;
 		}
 		virtual void _redraw() override
 		{			

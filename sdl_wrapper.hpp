@@ -26,17 +26,11 @@ struct Window
 		: w(width)
 		, h(height)
 	{
-		// Create our window
 		sdl_window = SDL_CreateWindow(title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, SDL_WINDOW_SHOWN);
-
-		// Make sure creating the window succeeded
 		if ( ! sdl_window)
 			throw;
 
-		// Get the surface from the window
 		winSurface = SDL_GetWindowSurface( sdl_window );
-
-		// Make sure getting the surface succeeded
 		if ( ! winSurface)
 			throw;
 
@@ -44,26 +38,18 @@ struct Window
 		if ( ! renderer)
 			throw;
 
-		font = TTF_OpenFont("/usr/share/fonts/truetype/ubuntu/UbuntuMono-R.ttf", 16);
+		font = TTF_OpenFont("ttf/UbuntuMono-R.ttf", 16);
 		if ( ! font)
 			throw;
 	}
 	~Window()
 	{
-		// This will also destroy the surface
 		//TTF_CloseFont(font);
 		SDL_DestroyWindow(sdl_window);
 	}
 
 	virtual void _redraw() {}
-
 	virtual bool handle_event(event) { return false; }
-	/*
-	virtual bool event_mouse_button_down([[maybe_unused]]int x, [[maybe_unused]]int y) { return false; }
-	virtual bool event_mouse_button_up  ([[maybe_unused]]int x, [[maybe_unused]]int y) { return false; }
-	virtual bool event_key_down([[maybe_unused]]int key) { return false; }
-	virtual bool event_key_up  ([[maybe_unused]]int key) { return false; }
-	*/
 
 	virtual void present()
 	{

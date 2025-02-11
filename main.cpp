@@ -57,7 +57,6 @@ struct my_window : OurW::Window
 		menu_file.add("Quit", [](){ exit(0); });
 		menu_file_open.add("Aasdfasdflkjsadf" , [&](){ butt1.set_text("1"); });
 		menu_file_open.add("bkjlkjblkjblkblkj", [&](){ butt1.set_text("2"); });
-
 		menubar.vpack();
 
 		this->container.add_widget(top_container);
