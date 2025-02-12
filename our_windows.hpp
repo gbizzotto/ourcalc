@@ -280,21 +280,13 @@ struct OW
 		std::vector<Widget*> widgets;
 		std::unique_ptr<Layout> layout;
 
-		Container(Window * window, Rect r)
+		Container(Window * window, Rect r = Rect{0,0,100,100})
 			: Widget(window, r)
 			, parent_window(window)
 			, layout(std::make_unique<Layout>())
 		{
 			this->border_width = 0;
 		}
-		/*Container(Container * container, Rect r)
-			: Widget(container, r)
-			, parent_window(container->parent_window)
-			, layout(std::make_unique<Layout>())
-		{
-			this->border_width = 0;
-			_redraw();
-		}*/
 
 		virtual bool on_width_set() override
 		{
@@ -449,7 +441,7 @@ struct OW
 	{
 		Text caption;
 
-		Label(Window * window, std::string text, Rect r)
+		Label(Window * window, std::string text, Rect r = Rect{0,0,100,20})
 			: Widget(window, r)
 			, caption(std::move(text), window)
 		{}
@@ -725,7 +717,7 @@ struct OW
 		Text caption;
 		std::function<void()> func;
 
-		Button(Window * window, std::string t, Rect r, std::function<void()> f)
+		Button(Window * window, std::string t, std::function<void()> f, Rect r = Rect{0,0,100,30})
 			: Widget(window, r)
 			, caption(t, window)
 			, func(std::move(f))
@@ -839,7 +831,7 @@ struct OW
 		unsigned int char_pos = 0;
 		unsigned int cursor_x = 0;
 	
-		TextEdit(Window * window, std::string t, Rect r)
+		TextEdit(Window * window, std::string t, Rect r = Rect{0,0,150,25})
 			: Widget(window, r)
 			, caption(t, window)
 		{
@@ -852,6 +844,8 @@ struct OW
 		{
 			caption.set_text(s);
 		}
+
+		virtual bool can_hfill() override { return false; }
 
 		virtual bool pack() override
 		{
@@ -1366,8 +1360,8 @@ struct OW
 	{
 		std::unique_ptr<PopupMenu> submenu;
 
-		MenuItem(Window * window, std::string text, Rect r, std::function<void()> f)
-			: Button(window, text, r, f)
+		MenuItem(Window * window, std::string text, std::function<void()> f, Rect r = Rect{0,0,100,20})
+			: Button(window, text, f, r)
 		{
 			this->color_bg.a = 0;
 			this->border_width = 0;
@@ -1397,7 +1391,7 @@ struct OW
 		std::vector<std::unique_ptr<MenuItem>> menu_items;
 
 		PopupMenu(Window * window)
-			: Container(window, {0,0,50,50})
+			: Container(window)
 		{
 			this->border_color_light = this->border_color_dark;
 			this->color_bg = this->color_bg + (256-this->color_bg)/2;
@@ -1412,7 +1406,7 @@ struct OW
 
 		PopupMenu & add_submenu(std::string caption)
 		{
-			std::unique_ptr<MenuItem> menu_item = std::make_unique<MenuItem>(this->parent_window, caption, Rect{0,0,0,0}, [&](){});
+			std::unique_ptr<MenuItem> menu_item = std::make_unique<MenuItem>(this->parent_window, caption, [&](){});
 			MenuItem * menu_item_ptr = menu_item.get();
 			menu_item->submenu = std::make_unique<PopupMenu>(this->parent_window);
 			menu_item->submenu->parent_container = &this->parent_window->container;
@@ -1428,7 +1422,7 @@ struct OW
 		}
 		void add(std::string caption, std::function<void()> func)
 		{
-			std::unique_ptr<MenuItem> menu_item = std::make_unique<MenuItem>(this->parent_window, caption, Rect{0,0,0,0}, [this,func]()
+			std::unique_ptr<MenuItem> menu_item = std::make_unique<MenuItem>(this->parent_window, caption, [this,func]()
 				{
 					this->parent_window->clear_popups();
 					func();
@@ -1458,7 +1452,7 @@ struct OW
 
 		PopupMenu & add_submenu(std::string caption)
 		{
-			std::unique_ptr<MenuItem> menu_item = std::make_unique<MenuItem>(this->parent_window, caption, Rect{0,0,0,0}, [](){});
+			std::unique_ptr<MenuItem> menu_item = std::make_unique<MenuItem>(this->parent_window, caption, [](){});
 			MenuItem * menu_item_ptr = menu_item.get();
 			menu_item->submenu = std::make_unique<PopupMenu>(this->parent_window);
 			menu_item->submenu->parent_container = &this->parent_window->container;
@@ -1474,7 +1468,7 @@ struct OW
 		}
 		void add(std::string caption, std::function<void()> func)
 		{
-			std::unique_ptr<MenuItem> menu_item = std::make_unique<MenuItem>(this->parent_window, caption, Rect{0,0,0,0}, [this,func]()
+			std::unique_ptr<MenuItem> menu_item = std::make_unique<MenuItem>(this->parent_window, caption, [this,func]()
 				{
 					this->parent_window->clear_popups();
 					func();

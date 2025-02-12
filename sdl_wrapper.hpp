@@ -258,8 +258,8 @@ public:
 
 struct DrawableArea
 {
-	ourunique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)> texture/* = nullptr*/;
 	SDL_Renderer * renderer;
+	ourunique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)> texture;
 	int w, h;
 	int wo, ho;
 	SDL_Rect rect_src;
@@ -272,7 +272,6 @@ struct DrawableArea
 		, wo(width*2)
 		, ho(height*2)
 	{
-		//texture = SDL_CreateTexture(window->renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, width, height);
 		texture.reset(SDL_CreateTexture(window->renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, wo, ho));
 		SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
 		rect_src.x = 0;
@@ -280,23 +279,9 @@ struct DrawableArea
 		rect_src.w = w;
 		rect_src.h = h;
 	}
-	//~DrawableArea()
-	//{
-	//	if (texture)
-	//	{
-	//		SDL_DestroyTexture(texture);
-	//		texture = nullptr;
-	//	}
-	//}
 
 	void set_size(std::pair<int,int> size)
 	{
-		//if (texture)
-		//{
-		//	SDL_DestroyTexture(texture);
-		//	texture = nullptr;
-		//}
-		//texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, w, h);
 		if (std::get<0>(size) > wo || std::get<1>(size) > ho)
 		{
 			texture.reset(SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, std::get<0>(size)*2, std::get<1>(size)*2));
