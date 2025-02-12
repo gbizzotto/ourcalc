@@ -42,6 +42,8 @@ struct my_window : OurW::Window
 		menubar.vpack();
 
 		this->container.add_widget(top_container);
+
+		grid1.take_focus();
 	}
 
 	virtual bool on_size_set(int w, int h)
@@ -56,7 +58,7 @@ int main()
 	assert(number_to_column_code(26*27+26) == "ABA");
 	OurW::Manager wm;
 
-	/*auto & w = */wm.make_window<my_window>("Test", 1024, 768);
+	/*auto & w = */wm.make_window<my_window>("OurCalc", 1024, 768);
 
 	wm.loop();
 

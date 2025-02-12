@@ -4,6 +4,7 @@
 #include <iostream>
 #include <vector>
 #include <deque>
+#include <set>
 #include <assert.h>
 
 #include "events.hpp"
@@ -30,12 +31,18 @@ std::string number_to_column_code(int zero_based_value)
 
 struct color_t
 {
-	int r, g, b, a;
-	color_t(int x)
+	char r, g, b, a;
+	color_t(char x)
 		: r(x)
 		, g(x)
 		, b(x)
 		, a(255)
+	{}
+	color_t(char _r, char _g, char _b, char _a)
+		: r(_r)
+		, g(_g)
+		, b(_b)
+		, a(_a)
 	{}
 	const color_t & operator=(int x)
 	{
@@ -1482,12 +1489,13 @@ struct OW
 
 	struct Grid : Container
 	{
-		int header_columns_height = 18;
+		int header_cols_height = 30;
 		int header_rows_width = 40;
 
-		color_t color_text_header = color_t(32);
-		color_t color_lines       = color_t(160);
-		color_t color_bg_header   = color_t(210);
+		color_t color_text_header      = color_t(32);
+		color_t color_lines            = color_t(160);
+		color_t color_bg_header        = color_t(210);
+		color_t selected_cells_overlay = color_t(128,200,128,96);
 
 		std::vector<std::vector<std::string>> formulas;
 		std::vector<std::vector<std::string>> values;
@@ -1495,12 +1503,18 @@ struct OW
 		std::vector<unsigned int> thickness_columns;
 		std::vector<unsigned int> thickness_rows;
 
-		std::vector<unsigned int> selected_columns;
-		std::vector<unsigned int> selected_rows;
-		std::vector<std::pair<unsigned int,unsigned int>> selected_cells;		
+		std::set<unsigned int>   selected_cols;
+		std::set<unsigned int>   selected_rows;
+		std::set<unsigned int> unselected_cols;
+		std::set<unsigned int> unselected_rows;
+		std::set<std::pair<unsigned int,unsigned int>>   selected_cells;
+		std::set<std::pair<unsigned int,unsigned int>> unselected_cells;
+		bool selected_all = false;		
 
 		std::deque<Text> header_captions_cols;
 		std::deque<Text> header_captions_rows;
+
+		bool key_ctrl = false;
 
 		Grid(Window * window)
 			: Container(window, {0,0,200,200})
@@ -1534,7 +1548,7 @@ struct OW
 					return false;
 			if (thickness_rows.size() != col_count)
 				return false;
-			if (selected_columns.size() > col_count)
+			if (selected_cols.size() > col_count)
 				return false;
 
 			// selection
@@ -1597,10 +1611,35 @@ struct OW
 		}
 		int get_total_height()
 		{
-			int total = header_columns_height;
+			int total = header_cols_height;
 			for (int t : thickness_rows)
 				total += t;
 			return total;
+		}
+
+		bool does_col_have_selection(unsigned int idx) const
+		{
+			if (selected_all)
+				return true;
+			for (auto n : selected_cols)
+				if (idx == n)
+					return true;
+			for (auto p : selected_cells)
+				if (idx == p.first)
+					return true;
+			return false;
+		}
+		bool does_row_have_selection(unsigned int idx) const
+		{
+			if (selected_all)
+				return true;
+			for (auto n : selected_rows)
+				if (idx == n)
+					return true;
+			for (auto p : selected_cells)
+				if (idx == p.second)
+					return true;
+			return false;
 		}
 
 		virtual void _redraw() override
@@ -1622,7 +1661,7 @@ struct OW
 			}
 
 			// horizontal lines
-			int y = header_columns_height;
+			int y = header_cols_height;
 			this->drawable_area.draw_line(0, y, draw_width, y, color_lines.r, color_lines.g, color_lines.b);
 			for (int thickness : thickness_rows)
 			{
@@ -1634,18 +1673,20 @@ struct OW
 
 			// column headers
 			x = header_rows_width;
-			int i = 0;
+			unsigned int i = 0;
 			for (int thickness : thickness_columns)
 			{
 				int next_x = x + thickness;
 
 				// dark rectangle
-				this->drawable_area.fill_rect(x+1, 0, thickness-1, header_columns_height, color_bg_header.r, color_bg_header.g, color_bg_header.b);
+				this->drawable_area.fill_rect(x+1, 0, thickness-1, header_cols_height, color_bg_header.r, color_bg_header.g, color_bg_header.b);
+				if (does_col_have_selection(i))
+					this->drawable_area.fill_rect(x+1, 0, thickness-1, header_cols_height, selected_cells_overlay.r, selected_cells_overlay.g, selected_cells_overlay.b, selected_cells_overlay.a);
 
 				int w_paste = header_captions_cols[i].w;
 				int h_paste = header_captions_cols[i].h;
 				int x_paste = (x+next_x)/2 - w_paste/2;
-				int y_paste = header_columns_height/2 - h_paste/2;
+				int y_paste = header_cols_height/2 - h_paste/2;
 
 				if (x_paste < x)
 				{
@@ -1654,7 +1695,7 @@ struct OW
 				}
 				if (y_paste < 0)
 				{
-					h_paste = header_columns_height;
+					h_paste = header_cols_height;
 					y_paste = 0;
 				}
 
@@ -1668,7 +1709,7 @@ struct OW
 			}
 
 			// row headers
-			y = header_columns_height;
+			y = header_cols_height;
 			i = 0;
 			for (int thickness : thickness_rows)
 			{
@@ -1676,6 +1717,8 @@ struct OW
 
 				// dark rectangle
 				this->drawable_area.fill_rect(0, y+1, header_rows_width, thickness-1, color_bg_header.r, color_bg_header.g, color_bg_header.b);
+				if (does_row_have_selection(i))
+					this->drawable_area.fill_rect(0, y+1, header_rows_width, thickness-1, selected_cells_overlay.r, selected_cells_overlay.g, selected_cells_overlay.b, selected_cells_overlay.a);
 
 				int w_paste = header_captions_rows[i].w;
 				int h_paste = header_captions_rows[i].h;
@@ -1702,7 +1745,314 @@ struct OW
 				++i;
 			}
 
+			// highlight selected cells
+			y = header_cols_height;
+			unsigned int row_idx = 0;
+			for (int thickness_row : thickness_rows)
+			{
+				x = header_rows_width;
+				unsigned int col_idx = 0;
+				int next_y = y + thickness_row;
+				for (int thickness_col : thickness_columns)
+				{
+					int next_x = x + thickness_col;
+
+					if (is_cell_selected(col_idx, row_idx))
+						this->drawable_area.fill_rect(x+1, y+1, thickness_col-1, thickness_row-1, selected_cells_overlay.r, selected_cells_overlay.g, selected_cells_overlay.b, selected_cells_overlay.a);
+
+					if (x > draw_width)
+						break;
+					x = next_x;
+					++col_idx;
+				}
+				if (y > draw_height)
+					break;
+				y = next_y;
+				++row_idx;
+			}
+
 			this->draw_border();
+		}
+
+		bool is_cell_selected(unsigned int col_idx, unsigned int row_idx)
+		{
+			auto p = std::make_pair(col_idx, row_idx);
+			if (selected_cells.contains(p))
+				return true;
+			if (unselected_cells.contains(p))
+				return false;
+			if (selected_all)
+			{
+				if (unselected_rows.contains(row_idx) || unselected_cols.contains(col_idx))
+					return false;
+				return true;
+			}
+			else
+			{
+				return (selected_rows.contains(row_idx) || selected_cols.contains(col_idx));
+			}
+		}
+
+		// returns -1 for header
+		int get_col_at(int x) const
+		{
+			if (x < header_rows_width)
+				return -1;
+			int result = 0;
+			int total_thickness = header_rows_width;
+			for (auto & thickness : thickness_columns)
+			{
+				total_thickness += thickness;
+				if (x < total_thickness)
+					break;
+				++result;
+			}
+			return result;
+		}
+		// returns -1 for header
+		int get_row_at(int y) const
+		{
+			if (y < header_cols_height)
+				return -1;
+			int result = 0;
+			int total_thickness = header_cols_height;
+			for (auto & thickness : thickness_rows)
+			{
+				total_thickness += thickness;
+				if (y < total_thickness)
+					break;
+				++result;
+			}
+			return result;
+		}
+
+		void clear_selection()
+		{
+			  selected_cols.clear();
+			  selected_rows.clear();
+			unselected_cols.clear();
+			unselected_rows.clear();
+			  selected_cells.clear();
+			unselected_cells.clear();
+			selected_all = false;
+		}
+
+		// return true if the row was unselected
+		bool toggle_unselected_row(unsigned int row_idx)
+		{
+			bool was_unselected = 0 < unselected_rows.erase(row_idx);
+			if ( ! was_unselected)
+				unselected_rows.insert(row_idx);
+			return was_unselected;
+		}
+		// return true if the row was selected
+		bool toggle_selected_row(unsigned int row_idx)
+		{
+			bool was_selected = 0 < selected_rows.erase(row_idx);
+			if ( ! was_selected)
+				selected_rows.insert(row_idx);
+			return was_selected;
+		}
+		// return true if the col was unselected
+		bool toggle_unselected_col(unsigned int col_idx)
+		{
+			bool was_unselected = 0 < unselected_cols.erase(col_idx);
+			if ( ! was_unselected)
+				unselected_cols.insert(col_idx);
+			return was_unselected;
+		}
+		// return true if the col was selected
+		bool toggle_selected_col(unsigned int col_idx)
+		{
+			bool was_selected = 0 < selected_cols.erase(col_idx);
+			if ( ! was_selected)
+				selected_cols.insert(col_idx);
+			return was_selected;
+		}
+
+		void clear_selected_cells_in_row(  unsigned int row_idx)
+		{
+			std::erase_if(selected_cells, [&](const auto & p){ return p.second == row_idx; });
+		}
+		void clear_selected_cells_in_col(  unsigned int col_idx)
+		{
+			std::erase_if(selected_cells, [&](const auto & p){ return p.first == col_idx; });
+		}
+		void clear_unselected_cells_in_row(unsigned int row_idx)
+		{
+			std::erase_if(unselected_cells, [&](const auto & p){ return p.second == row_idx; });
+		}
+		void clear_unselected_cells_in_col(unsigned int col_idx)
+		{
+			std::erase_if(unselected_cells, [&](const auto & p){ return p.first == col_idx; });
+		}
+		bool is_col_selected  (unsigned int col_idx) { return selected_cols  .contains(col_idx); }
+		bool is_row_selected  (unsigned int row_idx) { return selected_rows  .contains(row_idx); }
+		bool is_col_unselected(unsigned int col_idx) { return unselected_cols.contains(col_idx); }
+		bool is_row_unselected(unsigned int row_idx) { return unselected_rows.contains(row_idx); }
+
+		void toggle_selected_cell(unsigned int col_idx, unsigned int row_idx)
+		{
+			auto p = std::make_pair(col_idx, row_idx);
+			bool col_is_selected = is_col_selected(col_idx);
+			bool row_is_selected = is_row_selected(row_idx);
+			bool col_is_unselected = is_col_unselected(col_idx);
+			bool row_is_unselected = is_row_unselected(row_idx);
+
+			if (selected_all)
+			{
+				if ( ! col_is_unselected && ! row_is_unselected)
+				{
+					if (0 == unselected_cells.erase(p))
+					{
+						unselected_cells.insert(p);
+					}
+				}
+				else
+				{
+					if (0 == selected_cells.erase(p))
+					{
+						selected_cells.insert(p);
+					}
+				}
+			}
+			else
+			{
+				if (col_is_selected || row_is_selected)
+				{
+					if (0 == unselected_cells.erase(p))
+					{
+						unselected_cells.insert(p);
+					}
+				}
+				else
+				{
+					if (0 == selected_cells.erase(p))
+					{
+						selected_cells.insert(p);
+					}
+				}
+			}
+		}
+
+		virtual bool handle_event(event & ev) override
+		{
+			switch(ev.type)
+			{
+				case nop:
+					return true;
+				case window_shown:
+					return false;
+				case mouse:
+				{
+					if (ev.data.mouse.pressed != true)
+						break;
+
+					this->take_focus();
+
+					bool changed = false;
+					int col_idx = get_col_at(ev.data.mouse.x);
+					int row_idx = get_row_at(ev.data.mouse.y);
+					if ( ! key_ctrl)
+					{
+						clear_selection();
+						if (col_idx == -1 && row_idx == -1)
+						{
+							changed |= ! selected_all;
+							selected_all = true;
+						}
+						else if (col_idx == -1)
+						{
+							if ( ! is_row_selected(row_idx))
+							{
+								changed |= true;
+								selected_rows.insert(row_idx);
+								clear_unselected_cells_in_row(row_idx);
+							}
+						}
+						else if (row_idx == -1)
+						{
+							if ( ! is_col_selected(col_idx))
+							{
+								changed |= true;
+								selected_cols.insert(col_idx);
+								clear_unselected_cells_in_col(col_idx);
+							}
+						}
+						else
+						{
+							selected_cells.emplace(col_idx,row_idx);
+							changed |= true;
+						}
+					}
+					else
+					{
+						// ctrl is held down
+
+						if (col_idx == -1 && row_idx == -1)
+						{
+							clear_selection();
+							changed |= ! selected_all;
+							selected_all = true;
+						}
+						else if (col_idx == -1)
+						{
+							changed |= true;
+							if (selected_all)
+							{
+								bool was_unselected = toggle_unselected_row((unsigned int)row_idx);
+								if (was_unselected)
+									clear_selected_cells_in_row(row_idx);
+								else
+									clear_unselected_cells_in_row(row_idx);
+							}
+							else
+							{
+								bool was_selected = toggle_selected_row((unsigned int)row_idx);
+								if (was_selected)
+									clear_unselected_cells_in_row(row_idx);
+								else
+									clear_selected_cells_in_row(row_idx);
+							}
+						}
+						else if (row_idx == -1)
+						{
+							changed |= true;
+							if (selected_all)
+							{
+								bool was_unselected = toggle_unselected_col((unsigned int)col_idx);
+								if (was_unselected)
+									clear_selected_cells_in_col(col_idx);
+								else
+									clear_unselected_cells_in_col(col_idx);
+							}
+							else
+							{
+								bool was_selected = toggle_selected_col((unsigned int)col_idx);
+								if (was_selected)
+									clear_unselected_cells_in_col(col_idx);
+								else
+									clear_selected_cells_in_col(col_idx);
+							}
+						}
+						else
+						{
+							changed |= true;
+							toggle_selected_cell(col_idx, row_idx);
+						}
+					}
+					if (changed)
+						this->set_needs_redraw();
+					return changed;
+				}
+				case key:
+					if (ev.data.key.keycode == Scancode::Ctrl)
+						key_ctrl = ev.data.key.pressed;
+					break;
+				default:
+					break;
+			}
+			return false;
 		}
 	};
 

@@ -14,6 +14,19 @@
 
 struct DrawableArea;
 
+enum Scancode
+{
+	None = 0,
+	Up,
+	Down,
+	Left,
+	Right,
+	Ctrl,
+	Shift,
+	Alt,
+	Altgr,
+};
+
 struct Window
 {
 	SDL_Surface* winSurface = NULL;
@@ -523,23 +536,28 @@ struct SDL
 						SDL_Window * sdl_window = SDL_GetWindowFromID(ev.windowID);
 						if ( ! sdl_window)
 							break;
+						event my_event{event_type::key, 0};
+						my_event.data.key.pressed  = e.type == SDL_KEYDOWN;
+						my_event.data.key.released = e.type == SDL_KEYUP;
+						my_event.data.key.charcode = ev.keysym.sym;
 						switch (ev.keysym.scancode)
 						{
-							case SDL_SCANCODE_UP   : ev.keysym.sym = 1; break;
-							case SDL_SCANCODE_DOWN : ev.keysym.sym = 2; break;
-							case SDL_SCANCODE_LEFT : ev.keysym.sym = 3; break;
-							case SDL_SCANCODE_RIGHT: ev.keysym.sym = 4; break;
+							case SDL_SCANCODE_UP    : my_event.data.key.keycode = Scancode::Up   ; break;
+							case SDL_SCANCODE_DOWN  : my_event.data.key.keycode = Scancode::Down ; break;
+							case SDL_SCANCODE_LEFT  : my_event.data.key.keycode = Scancode::Left ; break;
+							case SDL_SCANCODE_RIGHT : my_event.data.key.keycode = Scancode::Right; break;
+							case SDL_SCANCODE_LCTRL : my_event.data.key.keycode = Scancode::Ctrl ; break;
+							case SDL_SCANCODE_RCTRL : my_event.data.key.keycode = Scancode::Ctrl ; break;
+							case SDL_SCANCODE_LSHIFT: my_event.data.key.keycode = Scancode::Shift; break;
+							case SDL_SCANCODE_RSHIFT: my_event.data.key.keycode = Scancode::Shift; break;
+							case SDL_SCANCODE_LALT  : my_event.data.key.keycode = Scancode::Alt  ; break;
+							case SDL_SCANCODE_RALT  : my_event.data.key.keycode = Scancode::Altgr; break;
 							default:
 								break;
 						}
 						for(auto & window : windows)
 							if (window->sdl_window == sdl_window)
 							{
-								event my_event{event_type::key, 0};
-								my_event.data.key.pressed  = e.type == SDL_KEYDOWN;
-								my_event.data.key.released = e.type == SDL_KEYUP;
-								my_event.data.key.keycode = ev.keysym.scancode;
-								my_event.data.key.charcode = ev.keysym.sym;
 								window->handle_event(my_event);
 								break;
 							}
