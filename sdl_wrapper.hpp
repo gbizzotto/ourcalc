@@ -202,14 +202,14 @@ struct Text : monitorable<text_change_t>
 	{
 		if ( ! text.size())
 		{
+			if (message_texture)
+				SDL_DestroyTexture(message_texture);
 			message_texture = SDL_CreateTexture(window->renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, 0, 0);
 			//SDL_RenderFillRect
 			SDL_SetTextureBlendMode(message_texture, SDL_BLENDMODE_BLEND);
 			return;
 		}
 
-		if (message_texture)
-			SDL_DestroyTexture(message_texture);
 		if (message_surface)
 			SDL_FreeSurface(message_surface);
 
@@ -240,40 +240,75 @@ struct Text : monitorable<text_change_t>
 	}
 };
 
+template<typename T, typename D=std::default_delete<T>>
+class ourunique_ptr : public std::unique_ptr<T,D>
+{
+public:
+	ourunique_ptr(T*t)
+		: std::unique_ptr<T,D>(t)
+	{}
+	ourunique_ptr(T*t, D d)
+		: std::unique_ptr<T,D>(t, d)
+	{}
+	operator T*()
+	{
+		return this->get();
+	}
+};
+
 struct DrawableArea
 {
-	SDL_Texture * texture = nullptr;
+	ourunique_ptr<SDL_Texture, decltype(&SDL_DestroyTexture)> texture/* = nullptr*/;
 	SDL_Renderer * renderer;
 	int w, h;
+	int wo, ho;
+	SDL_Rect rect_src;
 
 	DrawableArea(Window * window, int width, int height)
 		: renderer(window->renderer)
+		, texture(nullptr, &SDL_DestroyTexture)
 		, w(width)
 		, h(height)
+		, wo(width*2)
+		, ho(height*2)
 	{
-		texture = SDL_CreateTexture(window->renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, width, height);
+		//texture = SDL_CreateTexture(window->renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, width, height);
+		texture.reset(SDL_CreateTexture(window->renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, wo, ho));
 		SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+		rect_src.x = 0;
+		rect_src.y = 0;
+		rect_src.w = w;
+		rect_src.h = h;
 	}
-	~DrawableArea()
-	{
-		if (texture)
-		{
-			SDL_DestroyTexture(texture);
-			texture = nullptr;
-		}
-	}
+	//~DrawableArea()
+	//{
+	//	if (texture)
+	//	{
+	//		SDL_DestroyTexture(texture);
+	//		texture = nullptr;
+	//	}
+	//}
 
 	void set_size(std::pair<int,int> size)
 	{
+		//if (texture)
+		//{
+		//	SDL_DestroyTexture(texture);
+		//	texture = nullptr;
+		//}
+		//texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, w, h);
+		if (std::get<0>(size) > wo || std::get<1>(size) > ho)
+		{
+			texture.reset(SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, std::get<0>(size)*2, std::get<1>(size)*2));
+			SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+			wo = std::get<0>(size)*2;
+			ho = std::get<1>(size)*2;
+		}
+
 		w = std::get<0>(size);
 		h = std::get<1>(size);
-		if (texture)
-		{
-			SDL_DestroyTexture(texture);
-			texture = nullptr;
-		}
-		texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, w, h);
-		SDL_SetTextureBlendMode(texture, SDL_BLENDMODE_BLEND);
+		rect_src.w = w;
+		rect_src.h = h;
 	}
 
 	void copy_from(DrawableArea & other, int x, int y)
@@ -284,7 +319,7 @@ struct DrawableArea
 		rect.w = other.w;
 		rect.h = other.h;
 		SDL_SetRenderTarget(renderer, texture);
-		SDL_RenderCopy(renderer, other.texture, NULL, &rect);
+		SDL_RenderCopy(renderer, other.texture, &other.rect_src, &rect);
 		SDL_SetRenderTarget(renderer, NULL);
 	}
 	void copy_from(Text & text, int x, int y)
@@ -300,28 +335,28 @@ struct DrawableArea
 	}
 	void copy_from(Text & text, int x, int y, int _w, int _h)
 	{
-		SDL_Rect rect_src;
-		rect_src.x = 0;
-		rect_src.y = 0;
-		rect_src.w = _w;
-		rect_src.h = _h;
+		SDL_Rect rect_srca;
+		rect_srca.x = 0;
+		rect_srca.y = 0;
+		rect_srca.w = _w;
+		rect_srca.h = _h;
 		if (_w < text.w)
-			rect_src.x = (text.w-_w)/2;
+			rect_srca.x = (text.w-_w)/2;
 		if (_h < text.h)
-			rect_src.y = (text.h-_h)/2;
+			rect_srca.y = (text.h-_h)/2;
 		SDL_Rect rect_dest;
 		rect_dest.x = x;
 		rect_dest.y = y;
 		rect_dest.w = _w;
 		rect_dest.h = _h;
 		SDL_SetRenderTarget(renderer, texture);
-		SDL_RenderCopy(renderer, text.message_texture, &rect_src, &rect_dest);
+		SDL_RenderCopy(renderer, text.message_texture, &rect_srca, &rect_dest);
 		SDL_SetRenderTarget(renderer, NULL);
 	}
 	void refresh_window()
 	{
 		SDL_SetRenderTarget(renderer, NULL);
-		SDL_RenderCopy(renderer, texture, NULL, NULL);
+		SDL_RenderCopy(renderer, texture, &rect_src, NULL);
 	}
 
 	void fill(int r, int g, int b, int a=255)
@@ -441,6 +476,12 @@ struct SDL
 									case SDL_WINDOWEVENT_MOVED:
 										break;
 									case SDL_WINDOWEVENT_ENTER:
+										break;
+									case SDL_WINDOWEVENT_RESIZED:
+										event my_event{event_type::window_resized, 0};
+										my_event.data.window_resized.w = ((SDL_WindowEvent&)e).data1;
+										my_event.data.window_resized.h = ((SDL_WindowEvent&)e).data2;
+										window->handle_event(my_event);
 										break;
 								}
 								break;

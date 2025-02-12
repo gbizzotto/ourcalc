@@ -433,8 +433,9 @@ struct OW
 					break;
 				}
 				case key:
-				{
-				}
+					break;
+				default:
+					break;
 			}
 			return false;
 		}
@@ -711,6 +712,8 @@ struct OW
 				{
 					return false;
 				}
+				default:
+					break;
 			}
 			return false;
 		}
@@ -814,6 +817,8 @@ struct OW
 				{
 					// TODO: event_clicked if enter or space
 				}
+				default:
+					break;
 			}
 			return false;
 		}
@@ -914,6 +919,8 @@ struct OW
 					if (ev.data.key.pressed)
 						event_key_down(ev.data.key.charcode);
 				}
+				default:
+					break;
 			}
 			return false;
 		}
@@ -1776,7 +1783,7 @@ struct OW
 			popups.clear();
 			container.set_needs_redraw();
 		}
-
+		virtual bool on_size_set([[maybe_unused]]int w, [[maybe_unused]]int h) { return false; }
 		virtual bool handle_event(event ev) override
 		{
 			switch(ev.type)
@@ -1784,6 +1791,10 @@ struct OW
 				case nop:
 					return true;
 				case window_shown:
+					break;
+				case window_resized:
+					this->container.set_size({ev.data.window_resized.w, ev.data.window_resized.h});
+					on_size_set(ev.data.window_resized.w, ev.data.window_resized.h);
 					break;
 				case mouse:
 				{
@@ -1847,6 +1858,8 @@ struct OW
 						widget->handle_event(ev);
 					break;
 				}
+				default:
+					break;
 			}
 			_redraw();
 			return false;

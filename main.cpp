@@ -59,7 +59,7 @@ struct my_window : OurW::Window
 		split1.two.border_padding = 0;
 
 		auto & menu_file = menubar.add_submenu("File");
-		/*auto & menu_edit = */menubar.add_submenu("Edit");
+		/*auto & menu_edit = */menubar.add("Edit", [](){});
 		auto & menu_file_open = menu_file.add_submenu("Open");
 		menu_file.add("Quit", [](){ exit(0); });
 		menu_file_open.add("Aasdfasdflkjsadf" , [&](){ butt1.set_text("1"); });
@@ -67,6 +67,11 @@ struct my_window : OurW::Window
 		menubar.vpack();
 
 		this->container.add_widget(top_container);
+	}
+
+	virtual bool on_size_set(int w, int h)
+	{
+		return top_container.set_size({w, h});
 	}
 };
 
@@ -77,7 +82,6 @@ int main()
 	OurW::Manager wm;
 
 	/*auto & w = */wm.make_window<my_window>("Test", 1024, 768);
-	//w.set_layout_type<OurW::VLayout>();
 
 	wm.loop();
 

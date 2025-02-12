@@ -5,6 +5,7 @@ enum event_type
 {
 	nop = 0,
 	window_shown = 1,
+	window_resized,
 	mouse,
 	key,
 };
@@ -23,6 +24,10 @@ struct key_data
 	int keycode;
 	int charcode;
 };
+struct window_resized_data
+{
+	int w, h;
+};
 
 struct event
 {
@@ -32,5 +37,6 @@ struct event
 		int nothin_sandwich;
 		mouse_data mouse;
 		key_data   key;
+		window_resized_data window_resized;
 	} data;
 };
