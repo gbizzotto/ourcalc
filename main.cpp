@@ -22,9 +22,9 @@ struct my_window : OurW::Window
 		, text1(this, "asdf")
 		, grid1(this)
 	{
+		this->top_container.border_width = 0;
 		this->top_container.border_padding = 0;
 		this->top_container.inter_padding = 0;
-		this->top_container.border_width = 0;
 		this->top_container.set_layout(std::make_unique<OurW::VLayout>(horizontal_policy{horizontal_policy::alignment_t::left, horizontal_policy::sizing_t::fill}
 		                                                              ,  vertical_policy{  vertical_policy::alignment_t::top ,   vertical_policy::sizing_t::fill}));
 

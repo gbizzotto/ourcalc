@@ -39,7 +39,7 @@ struct Window
 		: w(width)
 		, h(height)
 	{
-		sdl_window = SDL_CreateWindow(title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+		sdl_window = SDL_CreateWindow(title, SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, width, height, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_RENDERER_PRESENTVSYNC);
 		if ( ! sdl_window)
 			throw;
 
@@ -500,8 +500,8 @@ struct SDL
 								my_event.data.mouse.pressed  = false;
 								my_event.data.mouse.released = false;
 								my_event.data.mouse.button = 0;
-								my_event.data.mouse.x = ev.x;
-								my_event.data.mouse.y = ev.y;
+								my_event.data.mouse.x = ev.x-1; // circumventing sdl bug (?)
+								my_event.data.mouse.y = ev.y-2; // circumventing sdl bug (?)
 								window->handle_event(my_event);
 								break;
 							}
@@ -512,6 +512,7 @@ struct SDL
 					case SDL_MOUSEBUTTONUP:
 					{
 						SDL_MouseButtonEvent & ev = (SDL_MouseButtonEvent&) e;
+
 						SDL_Window * sdl_window = SDL_GetWindowFromID(ev.windowID);
 						if ( ! sdl_window)
 							break;
@@ -522,8 +523,8 @@ struct SDL
 								my_event.data.mouse.pressed  = e.type == SDL_MOUSEBUTTONDOWN;
 								my_event.data.mouse.released = e.type == SDL_MOUSEBUTTONUP;
 								my_event.data.mouse.button = ev.button;
-								my_event.data.mouse.x = ev.x;
-								my_event.data.mouse.y = ev.y;
+								my_event.data.mouse.x = ev.x-1; // circumventing sdl bug (?)
+								my_event.data.mouse.y = ev.y-2; // circumventing sdl bug (?)
 								window->handle_event(my_event);
 								break;
 							}

@@ -293,6 +293,7 @@ struct OW
 			, layout(std::make_unique<Layout>())
 		{
 			this->border_width = 0;
+			this->border_padding = 0;
 		}
 
 		virtual bool on_width_set() override
@@ -1489,9 +1490,10 @@ struct OW
 
 	struct Grid : Container
 	{
-		int header_cols_height = 30;
+		int header_cols_height = 18;
 		int header_rows_width = 40;
 
+		color_t color_cell_bg          = color_t(255);
 		color_t color_text_header      = color_t(32);
 		color_t color_lines            = color_t(160);
 		color_t color_bg_header        = color_t(210);
@@ -1522,7 +1524,7 @@ struct OW
 			this->border_width = 0;
 			this->border_padding = 0;
 			this-> inter_padding = 0;
-			this->color_bg = 255;
+			this->color_bg = 160;
 
 			insert_columns(50, 0);
 			insert_rows(100, 0);
@@ -1649,6 +1651,7 @@ struct OW
 			int draw_width  = std::min(this->rect.w, get_total_width ());
 			int draw_height = std::min(this->rect.h, get_total_height());
 
+			/*
 			// vertical lines
 			int x = header_rows_width;
 			this->drawable_area.draw_line(x, 0, x, draw_height, color_lines.r, color_lines.g, color_lines.b);
@@ -1670,18 +1673,19 @@ struct OW
 				if (y > draw_height)
 					break;
 			}
+			*/
 
 			// column headers
-			x = header_rows_width;
+			int x = header_rows_width;
 			unsigned int i = 0;
 			for (int thickness : thickness_columns)
 			{
 				int next_x = x + thickness;
 
 				// dark rectangle
-				this->drawable_area.fill_rect(x+1, 0, thickness-1, header_cols_height, color_bg_header.r, color_bg_header.g, color_bg_header.b);
+				this->drawable_area.fill_rect(x, 0, thickness-1, header_cols_height-1, color_bg_header.r, color_bg_header.g, color_bg_header.b);
 				if (does_col_have_selection(i))
-					this->drawable_area.fill_rect(x+1, 0, thickness-1, header_cols_height, selected_cells_overlay.r, selected_cells_overlay.g, selected_cells_overlay.b, selected_cells_overlay.a);
+					this->drawable_area.fill_rect(x, 0, thickness-1, header_cols_height-1, selected_cells_overlay.r, selected_cells_overlay.g, selected_cells_overlay.b, selected_cells_overlay.a);
 
 				int w_paste = header_captions_cols[i].w;
 				int h_paste = header_captions_cols[i].h;
@@ -1709,16 +1713,16 @@ struct OW
 			}
 
 			// row headers
-			y = header_cols_height;
+			int y = header_cols_height;
 			i = 0;
 			for (int thickness : thickness_rows)
 			{
 				int next_y = y + thickness;
 
 				// dark rectangle
-				this->drawable_area.fill_rect(0, y+1, header_rows_width, thickness-1, color_bg_header.r, color_bg_header.g, color_bg_header.b);
+				this->drawable_area.fill_rect(0, y, header_rows_width-1, thickness-1, color_bg_header.r, color_bg_header.g, color_bg_header.b);
 				if (does_row_have_selection(i))
-					this->drawable_area.fill_rect(0, y+1, header_rows_width, thickness-1, selected_cells_overlay.r, selected_cells_overlay.g, selected_cells_overlay.b, selected_cells_overlay.a);
+					this->drawable_area.fill_rect(0, y, header_rows_width-1, thickness-1, selected_cells_overlay.r, selected_cells_overlay.g, selected_cells_overlay.b, selected_cells_overlay.a);
 
 				int w_paste = header_captions_rows[i].w;
 				int h_paste = header_captions_rows[i].h;
@@ -1745,7 +1749,7 @@ struct OW
 				++i;
 			}
 
-			// highlight selected cells
+			// cells
 			y = header_cols_height;
 			unsigned int row_idx = 0;
 			for (int thickness_row : thickness_rows)
@@ -1757,8 +1761,8 @@ struct OW
 				{
 					int next_x = x + thickness_col;
 
-					if (is_cell_selected(col_idx, row_idx))
-						this->drawable_area.fill_rect(x+1, y+1, thickness_col-1, thickness_row-1, selected_cells_overlay.r, selected_cells_overlay.g, selected_cells_overlay.b, selected_cells_overlay.a);
+					color_t cell_color = get_cell_color_bg(col_idx, row_idx);
+					this->drawable_area.fill_rect(x, y, thickness_col-1, thickness_row-1, cell_color.r, cell_color.g, cell_color.b, cell_color.a);
 
 					if (x > draw_width)
 						break;
@@ -1772,6 +1776,14 @@ struct OW
 			}
 
 			this->draw_border();
+		}
+
+		color_t get_cell_color_bg(unsigned int col_idx, unsigned int row_idx)
+		{
+			if (is_cell_selected(col_idx, row_idx))
+				return selected_cells_overlay;
+			else
+				return color_cell_bg;
 		}
 
 		bool is_cell_selected(unsigned int col_idx, unsigned int row_idx)
@@ -2097,9 +2109,9 @@ struct OW
 			: WSW::Window_t(title, width, height)
 			, container(this, Rect{0, 0, width, height})
 		{
+			container.border_width  = 0;
 			container.border_padding = 0;
 			container.inter_padding = 0;
-			container.border_width  = 0;
 		}
 
 		void set_focus(Widget * widg)
