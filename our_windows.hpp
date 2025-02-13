@@ -1512,7 +1512,7 @@ struct OW
 	};
 
 
-	struct Grid : Container
+	struct Grid : Widget
 	{
 		inline static const color_t color_cell_bg          = color_t(255);
 		inline static const color_t color_text_header      = color_t(32);
@@ -1521,11 +1521,13 @@ struct OW
 		inline static const color_t selected_cells_overlay = color_t(128,200,128,96);
 		inline static const int header_resizing_area_thickness = 2;
 
-		unsigned int header_cols_height = 18;
-		unsigned int header_rows_width = 40;
+		Window * parent_window;
 
 		std::vector<std::vector<std::string>> formulas;
 		std::vector<std::vector<std::string>> values;
+
+		unsigned int header_cols_height = 18;
+		unsigned int header_rows_width = 40;
 
 		std::vector<unsigned int> thickness_cols;
 		std::vector<unsigned int> thickness_rows;
@@ -1544,7 +1546,8 @@ struct OW
 		bool key_ctrl = false;
 
 		Grid(Window * window)
-			: Container(window, {0,0,200,200})
+			: Widget(window, {0,0,200,200})
+			, parent_window(window)
 		{
 			this->border_width = 0;
 			this->border_padding = 0;
@@ -1554,6 +1557,9 @@ struct OW
 			insert_columns(50, 0);
 			insert_rows(100, 0);
 		}
+
+		virtual int  width_packed() { return 0; }
+		virtual int height_packed() { return 0; }
 
 		bool has_integrity() const
 		{
@@ -1611,7 +1617,7 @@ struct OW
 
 			// column headers
 			for (decltype(count) i=0 ; i<count ; ++i)
-				header_captions_cols.emplace_back(number_to_column_code(header_captions_cols.size()), this->parent_window, color_text_header.r, color_text_header.g, color_text_header.b);
+				header_captions_cols.emplace_back(number_to_column_code(header_captions_cols.size()), parent_window, color_text_header.r, color_text_header.g, color_text_header.b);
 		}
 		void insert_rows(unsigned int count, unsigned int before_idx)
 		{
@@ -1626,7 +1632,7 @@ struct OW
 
 			// row headers
 			for (decltype(count) i=0 ; i<count ; ++i)
-				header_captions_rows.emplace_back(std::to_string(header_captions_rows.size()), this->parent_window, color_text_header.r, color_text_header.g, color_text_header.b);
+				header_captions_rows.emplace_back(std::to_string(header_captions_rows.size()), parent_window, color_text_header.r, color_text_header.g, color_text_header.b);
 		}
 
 		int get_total_width()
@@ -1809,7 +1815,7 @@ struct OW
 		// returns -1 for header
 		int get_col_at(int x) const
 		{
-			if (x < header_rows_width)
+			if (x < (int)header_rows_width)
 				return -1;
 			int result = 0;
 			int total_thickness = header_rows_width;
@@ -1825,7 +1831,7 @@ struct OW
 		// returns -1 for header
 		int get_row_at(int y) const
 		{
-			if (y < header_cols_height)
+			if (y < (int)header_cols_height)
 				return -1;
 			int result = 0;
 			int total_thickness = header_cols_height;
@@ -1951,7 +1957,7 @@ struct OW
 		// returns -2 if none, -1 if header, idx otherwise
 		int is_mouse_on_row_header_edge(int mouse_x, int mouse_y)
 		{
-			if (mouse_x <= header_rows_width + header_resizing_area_thickness)
+			if (mouse_x <= (int)header_rows_width + header_resizing_area_thickness)
 			{
 				// might be on a row's edge in row header
 				int y = header_cols_height;
@@ -1973,7 +1979,7 @@ struct OW
 		// returns -2 if none, -1 if header, idx otherwise
 		int is_mouse_on_col_header_edge(int mouse_x, int mouse_y)
 		{
-			if (mouse_y < header_cols_height + header_resizing_area_thickness)
+			if (mouse_y < (int)header_cols_height + header_resizing_area_thickness)
 			{
 				// might be on a row's edge in row header
 				int x = header_rows_width;
@@ -2010,11 +2016,11 @@ struct OW
 					{
 						// mouse move
 						if (row_edge_idx != -2)
-							this->parent_container->parent_window->set_cursor(MouseCursorImg::SIZENS);
+							parent_window->set_cursor(MouseCursorImg::SIZENS);
 						else if (col_edge_idx != -2)
-							this->parent_container->parent_window->set_cursor(MouseCursorImg::SIZEWE);
+							parent_window->set_cursor(MouseCursorImg::SIZEWE);
 						else
-							this->parent_container->parent_window->set_cursor(MouseCursorImg::ARROW);
+							parent_window->set_cursor(MouseCursorImg::ARROW);
 						break;
 					}
 
@@ -2025,16 +2031,16 @@ struct OW
 					if (row_edge_idx == -1)
 					{
 						unsigned int row_thickness = header_cols_height;
-						this->parent_container->parent_window->set_cursor(MouseCursorImg::SIZENS);
+						parent_window->set_cursor(MouseCursorImg::SIZENS);
 						this->mouse_grab(this,
-							[row_edge_idx,this,row_thickness](Widget*, int grab_x, int grab_y, int drag_x, int drag_y)
+							[row_edge_idx,this,row_thickness](Widget*, [[maybe_unused]]int grab_x, [[maybe_unused]]int grab_y, [[maybe_unused]]int drag_x, [[maybe_unused]]int drag_y)
 							{
 								this->header_cols_height = row_thickness + drag_y - grab_y;
 								this->set_needs_redraw();
 							},
-							[row_edge_idx,this,row_thickness](Widget*, int grab_x, int grab_y, int ungrab_x, int ungrab_y)
+							[row_edge_idx,this,row_thickness](Widget*, [[maybe_unused]]int grab_x, [[maybe_unused]]int grab_y, [[maybe_unused]]int ungrab_x, [[maybe_unused]]int ungrab_y)
 							{
-								this->parent_container->parent_window->set_cursor(MouseCursorImg::ARROW);
+								this->parent_window->set_cursor(MouseCursorImg::ARROW);
 								this->header_cols_height = row_thickness + ungrab_y - grab_y;
 								this->set_needs_redraw();
 							});
@@ -2043,16 +2049,16 @@ struct OW
 					else if (row_edge_idx >= 0)
 					{
 						unsigned row_thickness = this->thickness_rows[row_edge_idx];
-						this->parent_container->parent_window->set_cursor(MouseCursorImg::SIZENS);
+						parent_window->set_cursor(MouseCursorImg::SIZENS);
 						this->mouse_grab(this,
-							[row_edge_idx,this,row_thickness](Widget*, int grab_x, int grab_y, int drag_x, int drag_y)
+							[row_edge_idx,this,row_thickness](Widget*, [[maybe_unused]]int grab_x, [[maybe_unused]]int grab_y, [[maybe_unused]]int drag_x, [[maybe_unused]]int drag_y)
 							{
 								this->thickness_rows[row_edge_idx] = row_thickness + drag_y - grab_y;
 								this->set_needs_redraw();
 							},
-							[row_edge_idx,this,row_thickness](Widget*, int grab_x, int grab_y, int ungrab_x, int ungrab_y)
+							[row_edge_idx,this,row_thickness](Widget*, [[maybe_unused]]int grab_x, [[maybe_unused]]int grab_y, [[maybe_unused]]int ungrab_x, [[maybe_unused]]int ungrab_y)
 							{
-								this->parent_container->parent_window->set_cursor(MouseCursorImg::ARROW);
+								this->parent_window->set_cursor(MouseCursorImg::ARROW);
 								this->thickness_rows[row_edge_idx] = row_thickness + ungrab_y - grab_y;
 								this->set_needs_redraw();
 							});
@@ -2061,16 +2067,16 @@ struct OW
 					else if (col_edge_idx == -1)
 					{
 						unsigned int col_thickness = header_rows_width;
-						this->parent_container->parent_window->set_cursor(MouseCursorImg::SIZEWE);
+						parent_window->set_cursor(MouseCursorImg::SIZEWE);
 						this->mouse_grab(this,
-							[col_edge_idx,this,col_thickness](Widget*, int grab_x, int grab_y, int drag_x, int drag_y)
+							[col_edge_idx,this,col_thickness](Widget*, [[maybe_unused]]int grab_x, [[maybe_unused]]int grab_y, [[maybe_unused]]int drag_x, [[maybe_unused]]int drag_y)
 							{
 								this->header_rows_width = col_thickness + drag_x - grab_x;
 								this->set_needs_redraw();
 							},
-							[col_edge_idx,this,col_thickness](Widget*, int grab_x, int grab_y, int ungrab_x, int ungrab_y)
+							[col_edge_idx,this,col_thickness](Widget*, [[maybe_unused]]int grab_x, [[maybe_unused]]int grab_y, [[maybe_unused]]int ungrab_x, [[maybe_unused]]int ungrab_y)
 							{
-								this->parent_container->parent_window->set_cursor(MouseCursorImg::ARROW);
+								this->parent_window->set_cursor(MouseCursorImg::ARROW);
 								this->header_rows_width = col_thickness + ungrab_x - grab_x;
 								this->set_needs_redraw();
 							});
@@ -2079,16 +2085,16 @@ struct OW
 					else if (col_edge_idx >= 0)
 					{
 						unsigned int col_thickness = this->thickness_cols[col_edge_idx];
-						this->parent_container->parent_window->set_cursor(MouseCursorImg::SIZEWE);
+						parent_window->set_cursor(MouseCursorImg::SIZEWE);
 						this->mouse_grab(this,
-							[col_edge_idx,this,col_thickness](Widget*, int grab_x, int grab_y, int drag_x, int drag_y)
+							[col_edge_idx,this,col_thickness](Widget*, [[maybe_unused]]int grab_x, [[maybe_unused]]int grab_y, [[maybe_unused]]int drag_x, [[maybe_unused]]int drag_y)
 							{
 								this->thickness_cols[col_edge_idx] = col_thickness + drag_x - grab_x;
 								this->set_needs_redraw();
 							},
-							[col_edge_idx,this,col_thickness](Widget*, int grab_x, int grab_y, int ungrab_x, int ungrab_y)
+							[col_edge_idx,this,col_thickness](Widget*, [[maybe_unused]]int grab_x, [[maybe_unused]]int grab_y, [[maybe_unused]]int ungrab_x, [[maybe_unused]]int ungrab_y)
 							{
-								this->parent_container->parent_window->set_cursor(MouseCursorImg::ARROW);
+								this->parent_window->set_cursor(MouseCursorImg::ARROW);
 								this->thickness_cols[col_edge_idx] = col_thickness + ungrab_x - grab_x;
 								this->set_needs_redraw();
 							});
