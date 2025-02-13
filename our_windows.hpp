@@ -1395,7 +1395,6 @@ struct OW
 		MenuItem(Window * window, std::string text, std::function<void()> f, Rect r = Rect{0,0,100,20})
 			: Button(window, text, f, r)
 		{
-			this->color_bg.a = 0;
 			this->border_width = 0;
 			this->border_padding = 6;
 		}
