@@ -27,6 +27,23 @@ enum Scancode
 	Altgr,
 };
 
+enum MouseCursorImg
+{
+    ARROW      = SDL_SYSTEM_CURSOR_ARROW,     /**< Arrow */
+    IBEAM      = SDL_SYSTEM_CURSOR_IBEAM,     /**< I-beam */
+    WAIT       = SDL_SYSTEM_CURSOR_WAIT,      /**< Wait */
+    CROSSHAIR  = SDL_SYSTEM_CURSOR_CROSSHAIR, /**< Crosshair */
+    WAITARROW  = SDL_SYSTEM_CURSOR_WAITARROW, /**< Small wait cursor (or Wait if not available) */
+    SIZENWSE   = SDL_SYSTEM_CURSOR_SIZENWSE,  /**< Double arrow pointing northwest and southeast */
+    SIZENESW   = SDL_SYSTEM_CURSOR_SIZENESW,  /**< Double arrow pointing northeast and southwest */
+    SIZEWE     = SDL_SYSTEM_CURSOR_SIZEWE,    /**< Double arrow pointing west and east */
+    SIZENS     = SDL_SYSTEM_CURSOR_SIZENS,    /**< Double arrow pointing north and south */
+    SIZEALL    = SDL_SYSTEM_CURSOR_SIZEALL,   /**< Four pointed arrow pointing north, south, east, and west */
+    NO         = SDL_SYSTEM_CURSOR_NO,        /**< Slashed circle or crossbones */
+    HAND       = SDL_SYSTEM_CURSOR_HAND,      /**< Hand */
+    NB_CURSOR,
+};
+
 struct Window
 {
 	SDL_Surface* winSurface = NULL;
@@ -34,6 +51,8 @@ struct Window
 	SDL_Renderer* renderer = NULL;
 	TTF_Font * font;
 	int w, h;
+	MouseCursorImg current_cursor = MouseCursorImg::ARROW;
+	std::vector<SDL_Cursor*> mouse_cursors;
 	
 	Window(const char * title, int width, int height)
 		: w(width)
@@ -54,6 +73,9 @@ struct Window
 		font = TTF_OpenFont("ttf/UbuntuMono-R.ttf", 16);
 		if ( ! font)
 			throw;
+
+		for (int i=0 ; i<SDL_SystemCursor::SDL_NUM_SYSTEM_CURSORS ; ++i)
+			mouse_cursors.push_back(SDL_CreateSystemCursor((SDL_SystemCursor)i));
 	}
 	~Window()
 	{
@@ -61,6 +83,16 @@ struct Window
 		SDL_DestroyWindow(sdl_window);
 	}
 
+	// returns the previous cursor
+	virtual MouseCursorImg set_cursor(MouseCursorImg n)
+	{
+		if (n == current_cursor)
+			return;
+		auto c = current_cursor;
+		SDL_SetCursor(mouse_cursors[n]);
+		current_cursor = n;
+		return c;
+	}
 	virtual void _redraw() {}
 	virtual bool handle_event(event) { return false; }
 

@@ -914,6 +914,23 @@ struct OW
 						this->set_needs_redraw();
 						return true;
 					}
+					else
+					{
+						// mouse move
+						if (   ev.data.mouse.x > this->border_width + this->border_padding
+							&& ev.data.mouse.y > this->border_width + this->border_padding
+							&& ev.data.mouse.x < this->rect.w - (this->border_width + this->border_padding)
+							&& ev.data.mouse.y < this->rect.h - (this->border_width + this->border_padding))
+						{
+							if (this->parent_container)
+								this->parent_container->parent_window->set_cursor(MouseCursorImg::IBEAM);
+						}
+						else
+						{
+							if (this->parent_container)
+								this->parent_container->parent_window->set_cursor(MouseCursorImg::ARROW);
+						}
+					}
 					return false;
 				}
 				case key:
@@ -1490,19 +1507,19 @@ struct OW
 
 	struct Grid : Container
 	{
-		int header_cols_height = 18;
-		int header_rows_width = 40;
-
-		color_t color_cell_bg          = color_t(255);
-		color_t color_text_header      = color_t(32);
-		color_t color_lines            = color_t(160);
-		color_t color_bg_header        = color_t(210);
-		color_t selected_cells_overlay = color_t(128,200,128,96);
+		inline static const int header_cols_height = 18;
+		inline static const int header_rows_width = 40;
+		inline static const color_t color_cell_bg          = color_t(255);
+		inline static const color_t color_text_header      = color_t(32);
+		inline static const color_t color_lines            = color_t(160);
+		inline static const color_t color_bg_header        = color_t(210);
+		inline static const color_t selected_cells_overlay = color_t(128,200,128,96);
+		inline static const int header_resizing_area_thickness = 2;
 
 		std::vector<std::vector<std::string>> formulas;
 		std::vector<std::vector<std::string>> values;
 
-		std::vector<unsigned int> thickness_columns;
+		std::vector<unsigned int> thickness_cols;
 		std::vector<unsigned int> thickness_rows;
 
 		std::set<unsigned int>   selected_cols;
@@ -1582,7 +1599,7 @@ struct OW
 				row.insert(std::next(std::begin(row), before_idx), count, "");
 			for (auto & row : values)
 				row.insert(std::next(std::begin(row), before_idx), count, "");
-			thickness_columns.insert(std::next(std::begin(thickness_columns), before_idx), count, 50);
+			thickness_cols.insert(std::next(std::begin(thickness_cols), before_idx), count, 50);
 
 			// column headers
 			for (decltype(count) i=0 ; i<count ; ++i)
@@ -1607,7 +1624,7 @@ struct OW
 		int get_total_width()
 		{
 			int total = header_rows_width;
-			for (int t : thickness_columns)
+			for (int t : thickness_cols)
 				total += t;
 			return total;
 		}
@@ -1621,7 +1638,7 @@ struct OW
 
 		bool does_col_have_selection(unsigned int idx) const
 		{
-			if (selected_all)
+			if (selected_all && ! unselected_cols.contains(idx))
 				return true;
 			for (auto n : selected_cols)
 				if (idx == n)
@@ -1633,7 +1650,7 @@ struct OW
 		}
 		bool does_row_have_selection(unsigned int idx) const
 		{
-			if (selected_all)
+			if (selected_all && ! unselected_rows.contains(idx))
 				return true;
 			for (auto n : selected_rows)
 				if (idx == n)
@@ -1651,34 +1668,10 @@ struct OW
 			int draw_width  = std::min(this->rect.w, get_total_width ());
 			int draw_height = std::min(this->rect.h, get_total_height());
 
-			/*
-			// vertical lines
-			int x = header_rows_width;
-			this->drawable_area.draw_line(x, 0, x, draw_height, color_lines.r, color_lines.g, color_lines.b);
-			for (int thickness : thickness_columns)
-			{
-				x += thickness;
-				this->drawable_area.draw_line(x, 0, x, draw_height, color_lines.r, color_lines.g, color_lines.b);
-				if (x > draw_width)
-					break;
-			}
-
-			// horizontal lines
-			int y = header_cols_height;
-			this->drawable_area.draw_line(0, y, draw_width, y, color_lines.r, color_lines.g, color_lines.b);
-			for (int thickness : thickness_rows)
-			{
-				y += thickness;
-				this->drawable_area.draw_line(0, y, draw_width, y, color_lines.r, color_lines.g, color_lines.b);
-				if (y > draw_height)
-					break;
-			}
-			*/
-
 			// column headers
 			int x = header_rows_width;
 			unsigned int i = 0;
-			for (int thickness : thickness_columns)
+			for (int thickness : thickness_cols)
 			{
 				int next_x = x + thickness;
 
@@ -1757,7 +1750,7 @@ struct OW
 				x = header_rows_width;
 				unsigned int col_idx = 0;
 				int next_y = y + thickness_row;
-				for (int thickness_col : thickness_columns)
+				for (int thickness_col : thickness_cols)
 				{
 					int next_x = x + thickness_col;
 
@@ -1812,7 +1805,7 @@ struct OW
 				return -1;
 			int result = 0;
 			int total_thickness = header_rows_width;
-			for (auto & thickness : thickness_columns)
+			for (auto & thickness : thickness_cols)
 			{
 				total_thickness += thickness;
 				if (x < total_thickness)
@@ -1892,11 +1885,11 @@ struct OW
 		}
 		void clear_unselected_cells_in_row(unsigned int row_idx)
 		{
-			std::erase_if(unselected_cells, [&](const auto & p){ return p.second == row_idx; });
+			std::erase_if(unselected_cells, [&](const auto & p){ return p.second == row_idx && ! selected_cols.contains(p.first); });
 		}
 		void clear_unselected_cells_in_col(unsigned int col_idx)
 		{
-			std::erase_if(unselected_cells, [&](const auto & p){ return p.first == col_idx; });
+			std::erase_if(unselected_cells, [&](const auto & p){ return p.first == col_idx && ! selected_rows.contains(p.second); });
 		}
 		bool is_col_selected  (unsigned int col_idx) { return selected_cols  .contains(col_idx); }
 		bool is_row_selected  (unsigned int row_idx) { return selected_rows  .contains(row_idx); }
@@ -1947,6 +1940,49 @@ struct OW
 			}
 		}
 
+		bool is_mouse_on_row_header_edge(int mouse_x, int mouse_y)
+		{
+			if (mouse_x < header_rows_width + header_resizing_area_thickness)
+			{
+				// might be on a row's edge in row header
+				int y = header_cols_height;
+				int i = 0;
+				for (int thickness : thickness_rows)
+				{
+					int next_y = y + thickness;
+					if (   mouse_y >= y - header_resizing_area_thickness
+						&& mouse_y <= y + header_resizing_area_thickness)
+						return true;
+					if (y >= this->rect.h)
+						break;
+					y = next_y;
+					++i;
+				}
+			}
+			return false;
+		}
+		bool is_mouse_on_col_header_edge(int mouse_x, int mouse_y)
+		{
+			if (mouse_y < header_cols_height + header_resizing_area_thickness)
+			{
+				// might be on a row's edge in row header
+				int x = header_rows_width;
+				int i = 0;
+				for (int thickness : thickness_cols)
+				{
+					int next_x = x + thickness;
+					if (   mouse_x >= x - header_resizing_area_thickness
+						&& mouse_x <= x + header_resizing_area_thickness)
+						return true;
+					if (x >= this->rect.w)
+						break;
+					x = next_x;
+					++i;
+				}
+			}
+			return false;
+		}
+
 		virtual bool handle_event(event & ev) override
 		{
 			switch(ev.type)
@@ -1958,7 +1994,25 @@ struct OW
 				case mouse:
 				{
 					if (ev.data.mouse.pressed != true)
+					{
+						// mouse move
+						if (is_mouse_on_row_header_edge(ev.data.mouse.x, ev.data.mouse.y))
+						{
+							if (this->parent_container)
+								this->parent_container->parent_window->set_cursor(MouseCursorImg::SIZENS);
+						}
+						else if (is_mouse_on_col_header_edge(ev.data.mouse.x, ev.data.mouse.y))
+						{
+							if (this->parent_container)
+								this->parent_container->parent_window->set_cursor(MouseCursorImg::SIZEWE);
+						}
+						else
+						{
+							if (this->parent_container)
+								this->parent_container->parent_window->set_cursor(MouseCursorImg::ARROW);
+						}
 						break;
+					}
 
 					this->take_focus();
 
