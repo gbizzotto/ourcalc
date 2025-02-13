@@ -87,7 +87,7 @@ struct Window
 	virtual MouseCursorImg set_cursor(MouseCursorImg n)
 	{
 		if (n == current_cursor)
-			return;
+			return n;
 		auto c = current_cursor;
 		SDL_SetCursor(mouse_cursors[n]);
 		current_cursor = n;

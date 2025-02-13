@@ -189,16 +189,18 @@ struct OW
 		{
 			_mouse_grabbed = grabbed;
 		}
-		void mouse_grab()
+		void mouse_grab(Widget * w,
+		                std::function<void(Widget *, int /*grab_x*/, int /*grab_y*/, int /*drag_x*/, int /*drag_y*/)> drag_f,
+		                std::function<void(Widget *, int /*grab_x*/, int /*grab_y*/, int /*drag_x*/, int /*drag_y*/)> ungrab_f)
 		{
 			if (parent_container)
-				parent_container->mouse_grab(this);
+				parent_container->mouse_grab(w, drag_f, ungrab_f);
 		}
-		void mouse_release()
-		{
-			if (parent_container)
-				parent_container->mouse_release(this);
-		}
+		//void mouse_release()
+		//{
+		//	if (parent_container)
+		//		parent_container->mouse_release(this);
+		//}
 
 		void set_needs_redraw()
 		{
@@ -373,14 +375,16 @@ struct OW
 		{
 			parent_window->set_focus(widg);
 		}
-		void mouse_grab(Widget * widg)
+		void mouse_grab(Widget * widg,
+		                std::function<void(Widget *, int /*grab_x*/, int /*grab_y*/, int /*drag_x*/, int /*drag_y*/)> drag_f,
+		                std::function<void(Widget *, int /*grab_x*/, int /*grab_y*/, int /*drag_x*/, int /*drag_y*/)> ungrab_f)
 		{
-			parent_window->mouse_grab(widg);
+			parent_window->mouse_grab(widg, drag_f, ungrab_f);
 		}
-		void mouse_release(Widget * widg)
-		{
-			parent_window->mouse_release(widg);
-		}
+		//void mouse_release(Widget * widg)
+		//{
+		//	parent_window->mouse_release(widg);
+		//}
 
 		virtual void _redraw()
 		{
@@ -640,6 +644,7 @@ struct OW
 					return false;
 				case mouse:
 				{
+					/* TODO
 					if (this->has_mouse())
 					{
 						if (ev.data.mouse.released)
@@ -671,6 +676,7 @@ struct OW
 						}
 						return false;
 					}
+					*/
 
 					if (ev.data.mouse.pressed)
 					{
@@ -680,7 +686,8 @@ struct OW
 							// grabbing the splitter
 							if (this->parent_container)
 							{
-								this->parent_container->mouse_grab(this);
+								//this->parent_container->mouse_grab(this);
+								// TODO
 								return true;
 							}
 						}
@@ -1507,14 +1514,15 @@ struct OW
 
 	struct Grid : Container
 	{
-		inline static const int header_cols_height = 18;
-		inline static const int header_rows_width = 40;
 		inline static const color_t color_cell_bg          = color_t(255);
 		inline static const color_t color_text_header      = color_t(32);
 		inline static const color_t color_lines            = color_t(160);
 		inline static const color_t color_bg_header        = color_t(210);
 		inline static const color_t selected_cells_overlay = color_t(128,200,128,96);
 		inline static const int header_resizing_area_thickness = 2;
+
+		unsigned int header_cols_height = 18;
+		unsigned int header_rows_width = 40;
 
 		std::vector<std::vector<std::string>> formulas;
 		std::vector<std::vector<std::string>> values;
@@ -1940,47 +1948,49 @@ struct OW
 			}
 		}
 
-		bool is_mouse_on_row_header_edge(int mouse_x, int mouse_y)
+		// returns -2 if none, -1 if header, idx otherwise
+		int is_mouse_on_row_header_edge(int mouse_x, int mouse_y)
 		{
-			if (mouse_x < header_rows_width + header_resizing_area_thickness)
+			if (mouse_x <= header_rows_width + header_resizing_area_thickness)
 			{
 				// might be on a row's edge in row header
 				int y = header_cols_height;
-				int i = 0;
+				int i = -1;
 				for (int thickness : thickness_rows)
 				{
 					int next_y = y + thickness;
 					if (   mouse_y >= y - header_resizing_area_thickness
 						&& mouse_y <= y + header_resizing_area_thickness)
-						return true;
+						return i;
 					if (y >= this->rect.h)
 						break;
 					y = next_y;
 					++i;
 				}
 			}
-			return false;
+			return -2;
 		}
-		bool is_mouse_on_col_header_edge(int mouse_x, int mouse_y)
+		// returns -2 if none, -1 if header, idx otherwise
+		int is_mouse_on_col_header_edge(int mouse_x, int mouse_y)
 		{
 			if (mouse_y < header_cols_height + header_resizing_area_thickness)
 			{
 				// might be on a row's edge in row header
 				int x = header_rows_width;
-				int i = 0;
+				int i = -1;
 				for (int thickness : thickness_cols)
 				{
 					int next_x = x + thickness;
 					if (   mouse_x >= x - header_resizing_area_thickness
 						&& mouse_x <= x + header_resizing_area_thickness)
-						return true;
+						return i;
 					if (x >= this->rect.w)
 						break;
 					x = next_x;
 					++i;
 				}
 			}
-			return false;
+			return -2;
 		}
 
 		virtual bool handle_event(event & ev) override
@@ -1993,28 +2003,97 @@ struct OW
 					return false;
 				case mouse:
 				{
+					int row_edge_idx = is_mouse_on_row_header_edge(ev.data.mouse.x, ev.data.mouse.y);
+					int col_edge_idx = is_mouse_on_col_header_edge(ev.data.mouse.x, ev.data.mouse.y); 
+
 					if (ev.data.mouse.pressed != true)
 					{
 						// mouse move
-						if (is_mouse_on_row_header_edge(ev.data.mouse.x, ev.data.mouse.y))
-						{
-							if (this->parent_container)
-								this->parent_container->parent_window->set_cursor(MouseCursorImg::SIZENS);
-						}
-						else if (is_mouse_on_col_header_edge(ev.data.mouse.x, ev.data.mouse.y))
-						{
-							if (this->parent_container)
-								this->parent_container->parent_window->set_cursor(MouseCursorImg::SIZEWE);
-						}
+						if (row_edge_idx != -2)
+							this->parent_container->parent_window->set_cursor(MouseCursorImg::SIZENS);
+						else if (col_edge_idx != -2)
+							this->parent_container->parent_window->set_cursor(MouseCursorImg::SIZEWE);
 						else
-						{
-							if (this->parent_container)
-								this->parent_container->parent_window->set_cursor(MouseCursorImg::ARROW);
-						}
+							this->parent_container->parent_window->set_cursor(MouseCursorImg::ARROW);
 						break;
 					}
 
+					// mouse click
+
 					this->take_focus();
+
+					if (row_edge_idx == -1)
+					{
+						unsigned int row_thickness = header_cols_height;
+						this->parent_container->parent_window->set_cursor(MouseCursorImg::SIZENS);
+						this->mouse_grab(this,
+							[row_edge_idx,this,row_thickness](Widget*, int grab_x, int grab_y, int drag_x, int drag_y)
+							{
+								this->header_cols_height = row_thickness + drag_y - grab_y;
+								this->set_needs_redraw();
+							},
+							[row_edge_idx,this,row_thickness](Widget*, int grab_x, int grab_y, int ungrab_x, int ungrab_y)
+							{
+								this->parent_container->parent_window->set_cursor(MouseCursorImg::ARROW);
+								this->header_cols_height = row_thickness + ungrab_y - grab_y;
+								this->set_needs_redraw();
+							});
+						break;
+					}
+					else if (row_edge_idx >= 0)
+					{
+						unsigned row_thickness = this->thickness_rows[row_edge_idx];
+						this->parent_container->parent_window->set_cursor(MouseCursorImg::SIZENS);
+						this->mouse_grab(this,
+							[row_edge_idx,this,row_thickness](Widget*, int grab_x, int grab_y, int drag_x, int drag_y)
+							{
+								this->thickness_rows[row_edge_idx] = row_thickness + drag_y - grab_y;
+								this->set_needs_redraw();
+							},
+							[row_edge_idx,this,row_thickness](Widget*, int grab_x, int grab_y, int ungrab_x, int ungrab_y)
+							{
+								this->parent_container->parent_window->set_cursor(MouseCursorImg::ARROW);
+								this->thickness_rows[row_edge_idx] = row_thickness + ungrab_y - grab_y;
+								this->set_needs_redraw();
+							});
+						break;
+					}
+					else if (col_edge_idx == -1)
+					{
+						unsigned int col_thickness = header_rows_width;
+						this->parent_container->parent_window->set_cursor(MouseCursorImg::SIZEWE);
+						this->mouse_grab(this,
+							[col_edge_idx,this,col_thickness](Widget*, int grab_x, int grab_y, int drag_x, int drag_y)
+							{
+								this->header_rows_width = col_thickness + drag_x - grab_x;
+								this->set_needs_redraw();
+							},
+							[col_edge_idx,this,col_thickness](Widget*, int grab_x, int grab_y, int ungrab_x, int ungrab_y)
+							{
+								this->parent_container->parent_window->set_cursor(MouseCursorImg::ARROW);
+								this->header_rows_width = col_thickness + ungrab_x - grab_x;
+								this->set_needs_redraw();
+							});
+						break;
+					}
+					else if (col_edge_idx >= 0)
+					{
+						unsigned int col_thickness = this->thickness_cols[col_edge_idx];
+						this->parent_container->parent_window->set_cursor(MouseCursorImg::SIZEWE);
+						this->mouse_grab(this,
+							[col_edge_idx,this,col_thickness](Widget*, int grab_x, int grab_y, int drag_x, int drag_y)
+							{
+								this->thickness_cols[col_edge_idx] = col_thickness + drag_x - grab_x;
+								this->set_needs_redraw();
+							},
+							[col_edge_idx,this,col_thickness](Widget*, int grab_x, int grab_y, int ungrab_x, int ungrab_y)
+							{
+								this->parent_container->parent_window->set_cursor(MouseCursorImg::ARROW);
+								this->thickness_cols[col_edge_idx] = col_thickness + ungrab_x - grab_x;
+								this->set_needs_redraw();
+							});
+						break;
+					}
 
 					bool changed = false;
 					int col_idx = get_col_at(ev.data.mouse.x);
@@ -2140,14 +2219,37 @@ struct OW
 	struct mouse_grabber
 	{
 		Widget * widget = nullptr;
+		int grab_x, grab_y;
+		std::function<void(Widget *, int /*grab_x*/, int /*grab_y*/, int /*drag_x*/, int /*drag_y*/)> drag_f;
+		std::function<void(Widget *, int /*grab_x*/, int /*grab_y*/, int /*drag_x*/, int /*drag_y*/)> ungrab_f;
 
-		void operator()(Widget * w)
+		void operator()(Widget * w, int x, int y, decltype(drag_f) drag_func, decltype(ungrab_f) ungrab_func)
 		{
-			if (widget)
-				widget->set_mouse_grabbed(false);
+			if ( ! w)
+				return;
 			widget = w;
-			if (widget)
-				widget->set_mouse_grabbed(true);
+			grab_x = x;
+			grab_y = y;
+			drag_f = drag_func;
+			ungrab_f = ungrab_func;
+			widget->set_mouse_grabbed(true);
+			//drag_f(widget, grab_x, grab_y, x, y);
+			//widget->set_mouse_grabbed(false);
+			//widget = w;
+			//if (widget)
+			//	widget->set_mouse_grabbed(true);
+		}
+		void drag(int x, int y)
+		{
+			if (drag_f)
+				drag_f(widget, grab_x, grab_y, x, y);
+		}
+		void ungrab(int x, int y)
+		{
+			if (ungrab_f)
+				ungrab_f(widget, grab_x, grab_y, x, y);
+			widget->set_mouse_grabbed(false);
+			widget = nullptr;
 		}
 		operator Widget*() { return widget; }
 	};
@@ -2158,6 +2260,7 @@ struct OW
 		focus_holder focus;
 		mouse_grabber mousegrab;
 		std::vector<PopupMenu*> popups;
+		event current_event;
 
 		Window(const char * title, int width, int height)
 			: WSW::Window_t(title, width, height)
@@ -2172,15 +2275,17 @@ struct OW
 		{
 			focus(widg);
 		}
-		void mouse_grab(Widget * widg)
+		void mouse_grab(Widget * widg, 
+		                std::function<void(Widget *, int /*grab_x*/, int /*grab_y*/, int /*drag_x*/, int /*drag_y*/)> drag_f,
+		                std::function<void(Widget *, int /*grab_x*/, int /*grab_y*/, int /*drag_x*/, int /*drag_y*/)> ungrab_f)
 		{
-			mousegrab(widg);
+			mousegrab(widg, current_event.data.mouse.x, current_event.data.mouse.y, drag_f, ungrab_f);
 		}
-		void mouse_release(Widget * widg)
-		{
-			if (widg == mousegrab)
-				mousegrab(nullptr);
-		}
+		//void mouse_release(Widget * widg)
+		//{
+		//	if (widg == mousegrab)
+		//		mousegrab(nullptr);
+		//}
 
 		void add_popup(PopupMenu * menu)
 		{
@@ -2196,6 +2301,7 @@ struct OW
 		virtual bool on_size_set([[maybe_unused]]int w, [[maybe_unused]]int h) { return false; }
 		virtual bool handle_event(event ev) override
 		{
+			current_event = ev;
 			switch(ev.type)
 			{
 				case nop:
@@ -2247,16 +2353,22 @@ struct OW
 							}
 						}
 
-						Widget * widget = nullptr;
 						if (mousegrab)
-							widget = mousegrab;
-						else
-							widget = this->container.find_widget_at(x, y);
-						if (widget)
 						{
-							ev.data.mouse.x -= widget->rect.x;
-							ev.data.mouse.y -= widget->rect.y;
-							widget->handle_event(ev);
+							if ( ! ev.data.mouse.released)
+								mousegrab.drag(ev.data.mouse.x, ev.data.mouse.y);
+							else
+								mousegrab.ungrab(ev.data.mouse.x, ev.data.mouse.y);
+						}
+						else
+						{
+							Widget * widget = this->container.find_widget_at(x, y);
+							if (widget)
+							{
+								ev.data.mouse.x -= widget->rect.x;
+								ev.data.mouse.y -= widget->rect.y;
+								widget->handle_event(ev);
+							}
 						}
 					}
 					break;
