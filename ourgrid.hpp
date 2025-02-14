@@ -7,6 +7,7 @@
 
 #include <iostream>
 #include "our_windows.hpp"
+#include "sdl_wrapper.hpp"
 
 namespace py = pybind11;
 
@@ -21,12 +22,6 @@ PYBIND11_MODULE(example, m) {
 }
 */
 
-PYBIND11_EMBEDDED_MODULE(fast_calc, m) {
-	// `m` is a `py::module_` which is used to bind functions and classes
-	m.def("add", [](int i, int j) {
-		return i + j;
-	});
-}
 
 template<typename T>
 struct Grid : T::Widget
@@ -55,7 +50,7 @@ struct Grid : T::Widget
 			//    	return a*b
 			//)", py::globals(), locals);
 			icu::UnicodeString code = R"(number = 42
-from fast_calc import add
+from fast_calc import A
 display_text = str()";
 			code += formula.tempSubString(1);
 			code += ")";
@@ -68,6 +63,11 @@ display_text = str()";
 				auto display_text = locals["display_text"].cast<std::string>();
 				display.set_text(display_text);
 				error = false;
+			}
+			catch(std::exception & e)
+			{
+				std::cout << e.what() << std::endl;
+				error = true;
 			}
 			catch(...)
 			{
@@ -544,6 +544,13 @@ display_text = str()";
 		if (row_idx >= cell_data.size() || col_idx >= cell_data[row_idx].size())
 			return;
 		cell_data[row_idx][col_idx].set_formula(text);
+		this->set_needs_redraw();
+	}
+	icu::UnicodeString get_value_at(unsigned int col_idx, unsigned int row_idx)
+	{
+		if (row_idx >= cell_data.size() || col_idx >= cell_data[row_idx].size())
+			return "";
+		return cell_data[row_idx][col_idx].display.get_text();
 	}
 
 	void set_active_cell(unsigned int col_idx, unsigned int row_idx)
@@ -811,4 +818,15 @@ display_text = str()";
 		return false;
 	}
 };
+
+inline static Grid<OW<SDL>> * global_grid;
+
+PYBIND11_EMBEDDED_MODULE(fast_calc, m) {
+	// `m` is a `py::module_` which is used to bind functions and classes
+	m.def("A", [](int i) {
+		std::string tmp;
+		global_grid->get_value_at(0, i).toUTF8String(tmp);
+		return tmp;
+	});
+}
 

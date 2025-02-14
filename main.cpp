@@ -23,6 +23,8 @@ struct my_window : OurW::Window
 		, text1(this, "")
 		, grid1(this, text1)
 	{
+		global_grid = &grid1;
+
 		this->top_container.border_width = 0;
 		this->top_container.border_padding = 0;
 		this->top_container.inter_padding = 0;
