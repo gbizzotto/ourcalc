@@ -26,6 +26,7 @@ enum Scancode
 	Shift,
 	Alt,
 	Altgr,
+	Enter,
 };
 
 enum MouseCursorImg
@@ -577,8 +578,8 @@ struct SDL
 								my_event.data.mouse.pressed  = false;
 								my_event.data.mouse.released = false;
 								my_event.data.mouse.button = 0;
-								my_event.data.mouse.x = ev.x-1; // circumventing sdl bug (?)
-								my_event.data.mouse.y = ev.y-2; // circumventing sdl bug (?)
+								my_event.data.mouse.x = ev.x; //-1; // circumventing sdl bug (?)
+								my_event.data.mouse.y = ev.y; //-2; // circumventing sdl bug (?)
 								window->handle_event(my_event);
 								break;
 							}
@@ -600,8 +601,8 @@ struct SDL
 								my_event.data.mouse.pressed  = e.type == SDL_MOUSEBUTTONDOWN;
 								my_event.data.mouse.released = e.type == SDL_MOUSEBUTTONUP;
 								my_event.data.mouse.button = ev.button;
-								my_event.data.mouse.x = ev.x-1; // circumventing sdl bug (?)
-								my_event.data.mouse.y = ev.y-2; // circumventing sdl bug (?)
+								my_event.data.mouse.x = ev.x; //-1; // circumventing sdl bug (?)
+								my_event.data.mouse.y = ev.y; //-2; // circumventing sdl bug (?)
 								window->handle_event(my_event);
 								break;
 							}
@@ -620,16 +621,19 @@ struct SDL
 						my_event.data.key.charcode = ev.keysym.sym;
 						switch (ev.keysym.scancode)
 						{
-							case SDL_SCANCODE_UP    : my_event.data.key.keycode = Scancode::Up   ; break;
-							case SDL_SCANCODE_DOWN  : my_event.data.key.keycode = Scancode::Down ; break;
-							case SDL_SCANCODE_LEFT  : my_event.data.key.keycode = Scancode::Left ; break;
-							case SDL_SCANCODE_RIGHT : my_event.data.key.keycode = Scancode::Right; break;
-							case SDL_SCANCODE_LCTRL : my_event.data.key.keycode = Scancode::Ctrl ; break;
-							case SDL_SCANCODE_RCTRL : my_event.data.key.keycode = Scancode::Ctrl ; break;
-							case SDL_SCANCODE_LSHIFT: my_event.data.key.keycode = Scancode::Shift; break;
-							case SDL_SCANCODE_RSHIFT: my_event.data.key.keycode = Scancode::Shift; break;
-							case SDL_SCANCODE_LALT  : my_event.data.key.keycode = Scancode::Alt  ; break;
-							case SDL_SCANCODE_RALT  : my_event.data.key.keycode = Scancode::Altgr; break;
+							case SDL_SCANCODE_UP      : my_event.data.key.keycode = Scancode::Up   ; break;
+							case SDL_SCANCODE_DOWN    : my_event.data.key.keycode = Scancode::Down ; break;
+							case SDL_SCANCODE_LEFT    : my_event.data.key.keycode = Scancode::Left ; break;
+							case SDL_SCANCODE_RIGHT   : my_event.data.key.keycode = Scancode::Right; break;
+							case SDL_SCANCODE_LCTRL   : my_event.data.key.keycode = Scancode::Ctrl ; break;
+							case SDL_SCANCODE_RCTRL   : my_event.data.key.keycode = Scancode::Ctrl ; break;
+							case SDL_SCANCODE_LSHIFT  : my_event.data.key.keycode = Scancode::Shift; break;
+							case SDL_SCANCODE_RSHIFT  : my_event.data.key.keycode = Scancode::Shift; break;
+							case SDL_SCANCODE_LALT    : my_event.data.key.keycode = Scancode::Alt  ; break;
+							case SDL_SCANCODE_RALT    : my_event.data.key.keycode = Scancode::Altgr; break;
+							case SDL_SCANCODE_KP_ENTER: my_event.data.key.keycode = Scancode::Enter; break;
+							case SDL_SCANCODE_RETURN  : my_event.data.key.keycode = Scancode::Enter; break;
+								
 							default:
 								break;
 						}

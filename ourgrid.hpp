@@ -780,6 +780,7 @@ display_text = str()";
 						changed |= true;
 						break;
 					case Scancode::Down:
+					case Scancode::Enter:
 						if (active_cell.second < get_row_count()-1)
 							set_active_cell(active_cell.first, active_cell.second + 1);
 						changed |= true;
@@ -801,6 +802,9 @@ display_text = str()";
 					this->set_needs_redraw();
 				return changed;
 			}
+			case text:
+				editor.handle_event(ev);
+				break;
 			default:
 				break;
 		}
