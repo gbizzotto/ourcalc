@@ -2,10 +2,29 @@
 #pragma once
 
 #include "pybind11/pybind11.h"
+#include "pybind11/embed.h"
+#include <iostream>
 #include "our_windows.hpp"
 
 namespace py = pybind11;
 
+/*
+int add(int i, int j) {
+    return i + j;
+}
+PYBIND11_MODULE(example, m) {
+    m.doc() = "pybind11 example plugin"; // optional module docstring
+
+    m.def("add", &add, "A function that adds two numbers");
+}
+*/
+
+PYBIND11_EMBEDDED_MODULE(fast_calc, m) {
+	// `m` is a `py::module_` which is used to bind functions and classes
+	m.def("add", [](int i, int j) {
+		return i + j;
+	});
+}
 
 template<typename T>
 struct Grid : T::Widget
@@ -18,7 +37,29 @@ struct Grid : T::Widget
 		void set_formula(std::string text)
 		{
 			formula = text;
-			display.set_text(text);
+
+			if (formula.size() == 0 ||  formula[0] != '=')
+			{
+				display.set_text(text);
+				return;
+			}
+
+			//std::cout << formula << std::endl;
+			//std::cout << formula.substr(1) << std::endl;
+			auto locals = py::dict();
+			//py::exec(R"(
+			//    def ok(a,b):
+			//    	return a*b
+			//)", py::globals(), locals);
+			std::string code = R"(number = 42
+from fast_calc import add
+display_text = str()";
+			code += formula.substr(1);
+			code += ")";
+			//std::cout << code << std::endl;
+			py::exec(code, py::globals(), locals);
+			auto display_text = locals["display_text"].cast<std::string>();
+			display.set_text(display_text);
 		}
 	};
 
@@ -55,6 +96,8 @@ struct Grid : T::Widget
 	std::deque<Text> header_captions_rows;
 
 	bool key_ctrl = false;
+
+	py::scoped_interpreter guard{};
 
 	Grid(T::Window * window, T::TextEdit & edit)
 		: T::Widget(window, {0,0,200,200})
