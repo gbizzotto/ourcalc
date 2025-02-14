@@ -1,8 +1,10 @@
 
 #pragma once
 
+
 #include "pybind11/pybind11.h"
 #include "pybind11/embed.h"
+
 #include <iostream>
 #include "our_windows.hpp"
 
@@ -31,14 +33,15 @@ struct Grid : T::Widget
 {
 	struct CellData
 	{
-		std::string formula;
+		icu::UnicodeString formula;
 		Text display;
+		bool error = false;
 
-		void set_formula(std::string text)
+		void set_formula(icu::UnicodeString text)
 		{
 			formula = text;
 
-			if (formula.size() == 0 ||  formula[0] != '=')
+			if (formula.length() == 0 ||  formula[0] != '=')
 			{
 				display.set_text(text);
 				return;
@@ -51,15 +54,25 @@ struct Grid : T::Widget
 			//    def ok(a,b):
 			//    	return a*b
 			//)", py::globals(), locals);
-			std::string code = R"(number = 42
+			icu::UnicodeString code = R"(number = 42
 from fast_calc import add
 display_text = str()";
-			code += formula.substr(1);
+			code += formula.tempSubString(1);
 			code += ")";
 			//std::cout << code << std::endl;
-			py::exec(code, py::globals(), locals);
-			auto display_text = locals["display_text"].cast<std::string>();
-			display.set_text(display_text);
+			std::string utf8_code;
+			code.toUTF8String(utf8_code);
+			try
+			{
+				py::exec(utf8_code, py::globals(), locals);
+				auto display_text = locals["display_text"].cast<std::string>();
+				display.set_text(display_text);
+				error = false;
+			}
+			catch(...)
+			{
+				error = true;
+			}
 		}
 	};
 
@@ -97,13 +110,16 @@ display_text = str()";
 
 	bool key_ctrl = false;
 
-	py::scoped_interpreter guard{};
+	py::scoped_interpreter guard;
+
+	Text error_display;
 
 	Grid(T::Window * window, T::TextEdit & edit)
 		: T::Widget(window, {0,0,200,200})
 		, parent_window(window)
 		, editor(edit)
 		, active_cell{std::numeric_limits<unsigned int>::max(),std::numeric_limits<unsigned int>::max()}
+		, error_display(std::string("Error"), window, 255,0,0,255)
 	{
 		this->border_width = 0;
 		this->border_padding = 0;
@@ -149,7 +165,7 @@ display_text = str()";
 			return;
 
 		for (auto & row : cell_data)
-			row.insert(std::next(std::begin(row), before_idx), count, {"", Text("", parent_window)});
+			row.insert(std::next(std::begin(row), before_idx), count, {"", Text(parent_window)});
 		thickness_cols.insert(std::next(std::begin(thickness_cols), before_idx), count, 50);
 
 		// column headers
@@ -163,7 +179,7 @@ display_text = str()";
 		if (before_idx > get_row_count())
 			return;
 
-		cell_data.insert(std::next(std::begin(cell_data), before_idx), count, std::vector<CellData>(count, {"", Text("", parent_window)}));
+		cell_data.insert(std::next(std::begin(cell_data), before_idx), count, std::vector<CellData>(count, {"", Text(parent_window)}));
 		thickness_rows.insert(std::next(std::begin(thickness_rows), before_idx), count, 18);
 
 		// row headers
@@ -275,9 +291,12 @@ display_text = str()";
 				color_t cell_color = get_cell_color_bg(col_idx, row_idx);
 				this->drawable_area.fill_rect(x, y, thickness_col-1, thickness_row-1, cell_color.r, cell_color.g, cell_color.b, cell_color.a);
 
-				if (cell_data[row_idx][col_idx].formula.size() > 0)
+				if (cell_data[row_idx][col_idx].formula.length() > 0)
 				{
-					this->drawable_area.copy_from_text_to_rect(cell_data[row_idx][col_idx].display, x, y, thickness_col-1, thickness_row-1);
+					if (cell_data[row_idx][col_idx].error)
+						this->drawable_area.copy_from_text_to_rect(error_display, x, y, thickness_col-1, thickness_row-1);
+					else
+						this->drawable_area.copy_from_text_to_rect(cell_data[row_idx][col_idx].display, x, y, thickness_col-1, thickness_row-1);
 				}
 
 				if (active_cell.first == col_idx && active_cell.second == row_idx)
@@ -514,13 +533,13 @@ display_text = str()";
 		return -2;
 	}
 
-	std::string get_formula_at(unsigned int col_idx, unsigned int row_idx)
+	icu::UnicodeString get_formula_at(unsigned int col_idx, unsigned int row_idx)
 	{
 		if (row_idx >= cell_data.size() || col_idx >= cell_data[row_idx].size())
 			return "";
 		return cell_data[row_idx][col_idx].formula;
 	}
-	void set_formula_at(unsigned int col_idx, unsigned int row_idx, std::string text)
+	void set_formula_at(unsigned int col_idx, unsigned int row_idx, icu::UnicodeString text)
 	{
 		if (row_idx >= cell_data.size() || col_idx >= cell_data[row_idx].size())
 			return;

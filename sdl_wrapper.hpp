@@ -8,6 +8,7 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 #include <SDL2/SDL_image.h>
+#include <unicode/unistr.h>
 
 #include "events.hpp"
 #include "util.hpp"
@@ -197,11 +198,17 @@ struct Text : monitorable<text_change_t>
 	SDL_Surface* message_surface = nullptr;
 	SDL_Texture* message_texture = nullptr;
 	int w, h;
-	std::string text;
+	icu::UnicodeString text;
 	std::vector<int> char_pos;
 	SDL_Color color;
 
+	Text(Window * win, uint8_t r=64, uint8_t g=64, uint8_t b=64, uint8_t a=255)
+		: Text(icu::UnicodeString(), win, r, g, b, a)
+	{}
 	Text(std::string s, Window * win, uint8_t r=64, uint8_t g=64, uint8_t b=64, uint8_t a=255)
+		: Text(icu::UnicodeString::fromUTF8(s), win, r, g, b, a)
+	{}
+	Text(icu::UnicodeString s, Window * win, uint8_t r=64, uint8_t g=64, uint8_t b=64, uint8_t a=255)
 		: window(win)
 		, color{r, g, b, a}
 	{
@@ -230,35 +237,41 @@ struct Text : monitorable<text_change_t>
 	}
 
 	const std::pair<int,int> get_size() { return {w,h}; }
-	const std::string & get_text() const { return text; }
-	void set_text(std::string s)
+	const icu::UnicodeString & get_text() const { return text; }
+	void set_text(icu::UnicodeString s)
 	{
 		text = s;
 		render();
 		calculate_char_pos();
 		notify_monitors(text_change_t::text_changed);
 	}
+	void set_text(std::string s)
+	{
+		set_text(icu::UnicodeString::fromUTF8(s));
+	}
 
 	void calculate_char_pos()
 	{
 		char_pos.clear();
-		char_pos.reserve(text.size());
-		std::string tmp_text;
-		tmp_text.reserve(text.size());
-		for (int i=0 ; i<(int)text.size() ; i++)
+		char_pos.reserve(text.length());
+		icu::UnicodeString tmp_text;
+		//tmp_text.reserve(text.length());
+		for (int i=0 ; i<(int)text.length() ; i++)
 		{
-			tmp_text.push_back(text[i]);
+			tmp_text.append(text[i]);
 			int calculated_width;
 			int dummy;
 			//TTF_MeasureText(window->font, tmp_text.c_str(), w, &calculated_width, &dummy);
-			TTF_SizeText(window->font, tmp_text.c_str(), &calculated_width, &dummy);
+			std::string converted;
+			tmp_text.toUTF8String(converted);
+			TTF_SizeText(window->font, converted.c_str(), &calculated_width, &dummy);
 			char_pos.push_back(calculated_width);
 		}
 	}
 
 	void render()
 	{
-		if ( ! text.size())
+		if ( ! text.length())
 		{
 			if (message_texture)
 				SDL_DestroyTexture(message_texture);
@@ -272,7 +285,9 @@ struct Text : monitorable<text_change_t>
 			SDL_FreeSurface(message_surface);
 
 		// pre-render text
-		message_surface = TTF_RenderText_Blended(window->font, text.c_str(), color);
+		std::string converted;
+		text.toUTF8String(converted);
+		message_surface = TTF_RenderUTF8_Blended(window->font, converted.c_str(), color);
 		message_texture = SDL_CreateTextureFromSurface(window->renderer, message_surface);
 		SDL_SetTextureBlendMode(message_texture, SDL_BLENDMODE_BLEND);
 
@@ -494,6 +509,7 @@ struct SDL
 		if ( SDL_Init( SDL_INIT_EVERYTHING ) < 0 )
 			throw;
 	    TTF_Init();
+		SDL_StartTextInput();
 	}
 	~SDL()
 	{
@@ -617,6 +633,42 @@ struct SDL
 							default:
 								break;
 						}
+						for(auto & window : windows)
+							if (window->sdl_window == sdl_window)
+							{
+								window->handle_event(my_event);
+								break;
+							}
+						break;
+					}
+					case SDL_TEXTINPUT:
+					{
+						SDL_TextInputEvent & ev = (SDL_TextInputEvent&) e;
+						SDL_Window * sdl_window = SDL_GetWindowFromID(ev.windowID);
+						if ( ! sdl_window)
+							break;
+						event my_event{event_type::text, 0};
+						my_event.data.text.composition   = ev.text;
+						my_event.data.text.cursor_pos    = strlen(ev.text);
+						my_event.data.text.selection_len = 0;
+						for(auto & window : windows)
+							if (window->sdl_window == sdl_window)
+							{
+								window->handle_event(my_event);
+								break;
+							}
+						break;
+					}
+					case SDL_TEXTEDITING:
+					{
+						SDL_TextEditingEvent & ev = (SDL_TextEditingEvent&) e;
+						SDL_Window * sdl_window = SDL_GetWindowFromID(ev.windowID);
+						if ( ! sdl_window)
+							break;
+						event my_event{event_type::text, 0};
+						my_event.data.text.composition   = ev.text;
+						my_event.data.text.cursor_pos    = ev.start;
+						my_event.data.text.selection_len = ev.length;
 						for(auto & window : windows)
 							if (window->sdl_window == sdl_window)
 							{

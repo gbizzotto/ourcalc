@@ -8,6 +8,7 @@ enum event_type
 	window_resized,
 	mouse,
 	key,
+	text,
 };
 
 struct mouse_data
@@ -28,6 +29,12 @@ struct window_resized_data
 {
 	int w, h;
 };
+struct text_data
+{
+	char * composition;
+	int cursor_pos;
+	int selection_len;
+};
 
 struct event
 {
@@ -38,5 +45,6 @@ struct event
 		mouse_data mouse;
 		key_data   key;
 		window_resized_data window_resized;
+		text_data  text;
 	} data;
 };

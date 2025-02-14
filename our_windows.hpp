@@ -177,7 +177,7 @@ struct OW
 				set_needs_redraw();
 			}
 		}
-		void set_focus(bool has)
+		virtual void set_focus(bool has)
 		{
 			if (has != _focus)
 			{
@@ -744,7 +744,7 @@ struct OW
 		{
 			func = f;
 		}
-		void set_text(std::string s)
+		void set_text(icu::UnicodeString s)
 		{
 			caption.set_text(s);
 			this->set_needs_redraw();
@@ -845,8 +845,9 @@ struct OW
 		int text_y;	
 		unsigned int char_pos = 0;
 		unsigned int cursor_x = 0;
+		bool editing = false;
 	
-		TextEdit(Window * window, std::string t, Rect r = Rect{0,0,150,25})
+		TextEdit(Window * window, icu::UnicodeString t, Rect r = Rect{0,0,150,25})
 			: Widget(window, r)
 			, caption(t, window)
 		{
@@ -855,13 +856,13 @@ struct OW
 			this->color_bg = 255;
 		}
 
-		void set_text(std::string s)
+		void set_text(icu::UnicodeString s)
 		{
 			caption.set_text(s);
-			char_pos = s.size();
+			char_pos = s.length();
 			this->set_needs_redraw();
 		}
-		const std::string & get_text() const
+		const icu::UnicodeString & get_text() const
 		{
 			return caption.get_text();
 		}
@@ -908,7 +909,6 @@ struct OW
 			this->needs_redraw = false;
 		}
 
-
 		virtual bool handle_event(event & ev) override
 		{
 			switch(ev.type)
@@ -948,8 +948,19 @@ struct OW
 				}
 				case key:
 				{
+					if (editing)
+						break;
 					if (ev.data.key.pressed)
 						event_key_down(ev.data.key.charcode);
+					break;
+				}
+				case text:
+				{
+					caption.set_text(caption.text.insert(char_pos, icu::UnicodeString::fromUTF8(ev.data.text.composition)));
+					++char_pos;
+					cursor_x = text_x + caption.get_char_x(char_pos);
+					this->set_needs_redraw();
+					break;
 				}
 				default:
 					break;
@@ -967,7 +978,7 @@ struct OW
 				// backspace
 				if (char_pos == 0)
 					return true;
-				str.erase(std::begin(str)+(char_pos-1), std::begin(str)+char_pos);
+				str.remove(char_pos-1, 1);
 				--char_pos;
 				caption_changed = true;
 				cursor_changed = true;
@@ -975,9 +986,9 @@ struct OW
 			else if (key == 127)
 			{
 				// suppress
-				if (char_pos == caption.text.size())
+				if (char_pos == (unsigned int) caption.text.length())
 					return true;
-				str.erase(std::begin(str)+(char_pos), std::begin(str)+(char_pos+1));
+				str.remove(char_pos, 1);
 				caption_changed = true;
 			}
 			else if (key == '\t')
@@ -1000,7 +1011,7 @@ struct OW
 			}
 			else if (key == Scancode::Right)
 			{
-				if (char_pos == caption.text.size())
+				if (char_pos == (unsigned int) caption.text.length())
 					return true;
 				++char_pos;
 				cursor_changed = true;
@@ -1008,10 +1019,12 @@ struct OW
 			else
 			{
 				// printable char
-				str.insert(str.begin()+char_pos, key);
+				/*
+				str.insert(char_pos, key);
 				++char_pos;
 				caption_changed = true;
 				cursor_changed = true;
+				*/
 			}
 
 			if (caption_changed)
@@ -1685,15 +1698,13 @@ struct OW
 					}
 					break;
 				}
-				case key:
+				default:
 				{
 					Widget * widget = focus;
 					if (widget)
 						widget->handle_event(ev);
 					break;
 				}
-				default:
-					break;
 			}
 			_redraw();
 			return false;
