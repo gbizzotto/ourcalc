@@ -77,7 +77,7 @@ struct Window
 		for (int i=0 ; i<SDL_SystemCursor::SDL_NUM_SYSTEM_CURSORS ; ++i)
 			mouse_cursors.push_back(SDL_CreateSystemCursor((SDL_SystemCursor)i));
 	}
-	~Window()
+	virtual ~Window()
 	{
 		//TTF_CloseFont(font);
 		SDL_DestroyWindow(sdl_window);
@@ -207,7 +207,14 @@ struct Text : monitorable<text_change_t>
 	{
 		set_text(s);
 	}
-	Text(Text & other) = delete;
+	Text(const Text & other)
+		: window(other.window)
+		, w(other.w)
+		, h(other.h)
+		, color(other.color)
+	{
+		set_text(other.text);
+	}
 
 	~Text()
 	{
@@ -363,22 +370,38 @@ struct DrawableArea
 		SDL_RenderCopy(renderer, text.message_texture, NULL, &rect);
 		SDL_SetRenderTarget(renderer, NULL);
 	}
-	void copy_from(Text & text, int x, int y, int _w, int _h)
+	void copy_from_text_to_rect(Text & text, int dest_x, int dest_y, int dest_w, int dest_h)
 	{
 		SDL_Rect rect_srca;
 		rect_srca.x = 0;
 		rect_srca.y = 0;
-		rect_srca.w = _w;
-		rect_srca.h = _h;
-		if (_w < text.w)
-			rect_srca.x = (text.w-_w)/2;
-		if (_h < text.h)
-			rect_srca.y = (text.h-_h)/2;
+		rect_srca.w = text.w;
+		rect_srca.h = text.h;
 		SDL_Rect rect_dest;
-		rect_dest.x = x;
-		rect_dest.y = y;
-		rect_dest.w = _w;
-		rect_dest.h = _h;
+		rect_dest.x = dest_x;
+		rect_dest.y = dest_y;
+		rect_dest.w = dest_w;
+		rect_dest.h = dest_h;
+		if (dest_w < text.w)
+		{
+			rect_srca.x += (text.w-dest_w)/2;
+			rect_srca.w = dest_w;
+		}
+		else if (dest_w > text.w)
+		{
+			rect_dest.x += (dest_w-text.w)/2;
+			rect_dest.w = text.w;
+		}
+		if (dest_h < text.h)
+		{
+			rect_srca.y += (text.h-dest_h)/2;
+			rect_srca.h = dest_h;
+		}
+		else if (dest_h > text.h)
+		{
+			rect_dest.y += (dest_h-text.h)/2;
+			rect_dest.h = text.h;
+		}
 		SDL_SetRenderTarget(renderer, texture);
 		SDL_RenderCopy(renderer, text.message_texture, &rect_srca, &rect_dest);
 		SDL_SetRenderTarget(renderer, NULL);
@@ -408,7 +431,7 @@ struct DrawableArea
 		SDL_RenderDrawLine(renderer, x1, y1, x2, y2);
 		SDL_SetRenderTarget(renderer, NULL);
 	}
-	void draw_rect(int x, int y, int w, int h, int r, int g, int b)
+	void draw_rect(int x, int y, int w, int h, int r, int g, int b, int a=255)
 	{
 	    SDL_Rect rect;
 	    rect.x = x;
@@ -417,8 +440,8 @@ struct DrawableArea
 	    rect.h = h;
 
 		SDL_SetRenderTarget(renderer, texture);
-	    SDL_SetRenderDrawColor(renderer, r, g, b, 255);
-	    SDL_RenderFillRect(renderer, &rect);
+	    SDL_SetRenderDrawColor(renderer, r, g, b, a);
+	    SDL_RenderDrawRect(renderer, &rect);
 		SDL_SetRenderTarget(renderer, NULL);
 	}
 	void draw_3d_rect(int x, int y, int w, int h, int light, int dark, bool sunken)

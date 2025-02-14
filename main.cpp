@@ -19,8 +19,8 @@ struct my_window : OurW::Window
 		: OurW::Window(title, width, height)
 		, top_container(this)
 		, menubar(this)
-		, text1(this, "asdf")
-		, grid1(this)
+		, text1(this, "")
+		, grid1(this, text1)
 	{
 		this->top_container.border_width = 0;
 		this->top_container.border_padding = 0;

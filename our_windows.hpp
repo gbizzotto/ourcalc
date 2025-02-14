@@ -858,6 +858,12 @@ struct OW
 		void set_text(std::string s)
 		{
 			caption.set_text(s);
+			char_pos = s.size();
+			this->set_needs_redraw();
+		}
+		const std::string & get_text() const
+		{
+			return caption.get_text();
 		}
 
 		virtual bool can_hfill() override { return false; }
@@ -979,25 +985,21 @@ struct OW
 				// tab
 				return false;
 			}
-			else if (key == 1)
+			else if (key == Scancode::Up)
 			{
-				// up, do nothing
 			}
-			else if (key == 2)
+			else if (key == Scancode::Right)
 			{
-				// right, do nothing
 			}
-			else if (key == 3)
+			else if (key == Scancode::Left)
 			{
-				// left
 				if (char_pos == 0)
 					return true;
 				--char_pos;
 				cursor_changed = true;
 			}
-			else if (key == 4)
+			else if (key == Scancode::Right)
 			{
-				// left
 				if (char_pos == caption.text.size())
 					return true;
 				++char_pos;
@@ -1518,12 +1520,16 @@ struct OW
 		inline static const color_t color_lines            = color_t(160);
 		inline static const color_t color_bg_header        = color_t(210);
 		inline static const color_t selected_cells_overlay = color_t(128,200,128,96);
+		inline static const color_t color_active_cell      = color_t(0);
 		inline static const int header_resizing_area_thickness = 2;
 
 		Window * parent_window;
+		TextEdit & editor;
+
+		std::pair<unsigned int, unsigned int> active_cell;
 
 		std::vector<std::vector<std::string>> formulas;
-		std::vector<std::vector<std::string>> values;
+		std::vector<std::vector<Text>> display;
 
 		unsigned int header_cols_height = 18;
 		unsigned int header_rows_width = 40;
@@ -1544,9 +1550,11 @@ struct OW
 
 		bool key_ctrl = false;
 
-		Grid(Window * window)
+		Grid(Window * window, TextEdit & edit)
 			: Widget(window, {0,0,200,200})
 			, parent_window(window)
+			, editor(edit)
+			, active_cell{std::numeric_limits<unsigned int>::max(),std::numeric_limits<unsigned int>::max()}
 		{
 			this->border_width = 0;
 			this->border_padding = 0;
@@ -1555,6 +1563,8 @@ struct OW
 
 			insert_columns(50, 0);
 			insert_rows(100, 0);
+
+			set_active_cell(0,0);
 		}
 
 		virtual int  width_packed() { return 0; }
@@ -1563,55 +1573,36 @@ struct OW
 		bool has_integrity() const
 		{
 			// row count
-			if (formulas.size() != values.size())
-				return false;
-			if (formulas.size() != thickness_rows.size())
-				return false;
-			if (formulas.size() < selected_rows.size())
-				return false;
+			assert(formulas.size() == display.size());
+			assert(formulas.size() == thickness_rows.size());
+			assert(formulas.size() >= selected_rows.size());
 
 			// column count
-			unsigned int col_count = get_column_count();
+			unsigned int col_count = get_col_count();
+			unsigned int row_count = get_row_count();
 			for (auto & row : formulas)
-				if (row.size() != col_count)
-					return false;
-			for (auto & row : values)
-				if (row.size() != col_count)
-					return false;
-			if (thickness_rows.size() != col_count)
-				return false;
-			if (selected_cols.size() > col_count)
-				return false;
+				assert(row.size() == col_count);
+			for (auto & row : display)
+				assert(row.size() == col_count);
+			assert(thickness_rows.size() == row_count);
+			assert(selected_cols.size() <= col_count);
 
 			// selection
-			if (selected_cells.size() > get_column_count() * get_row_count())
-				return false;
-
+			assert (selected_cells.size() <= get_col_count() * get_row_count());
 			return true;
-		}
-
-		unsigned int get_column_count() const
-		{
-			if (formulas.size() == 0)
-				return 0;
-			return formulas[0].size();
-		}
-		unsigned int get_row_count() const
-		{
-			return formulas.size();
 		}
 
 		void insert_columns(unsigned int count, unsigned int before_idx)
 		{
 			assert(has_integrity());
 
-			if (before_idx > get_column_count())
+			if (before_idx > get_col_count())
 				return;
 
 			for (auto & row : formulas)
 				row.insert(std::next(std::begin(row), before_idx), count, "");
-			for (auto & row : values)
-				row.insert(std::next(std::begin(row), before_idx), count, "");
+			for (auto & row : display)
+				row.insert(std::next(std::begin(row), before_idx), count, Text("", parent_window));
 			thickness_cols.insert(std::next(std::begin(thickness_cols), before_idx), count, 50);
 
 			// column headers
@@ -1626,7 +1617,7 @@ struct OW
 				return;
 
 			formulas.insert(std::next(std::begin(formulas), before_idx), count, std::vector<std::string>(count, ""));
-			values  .insert(std::next(std::begin(values  ), before_idx), count, std::vector<std::string>(count, ""));
+			display .insert(std::next(std::begin(display ), before_idx), count, std::vector<Text>(count, Text("", parent_window)));
 			thickness_rows.insert(std::next(std::begin(thickness_rows), before_idx), count, 18);
 
 			// row headers
@@ -1693,23 +1684,7 @@ struct OW
 				if (does_col_have_selection(i))
 					this->drawable_area.fill_rect(x, 0, thickness-1, header_cols_height-1, selected_cells_overlay.r, selected_cells_overlay.g, selected_cells_overlay.b, selected_cells_overlay.a);
 
-				int w_paste = header_captions_cols[i].w;
-				int h_paste = header_captions_cols[i].h;
-				int x_paste = (x+next_x)/2 - w_paste/2;
-				int y_paste = header_cols_height/2 - h_paste/2;
-
-				if (x_paste < x)
-				{
-					w_paste = thickness;
-					x_paste = x;
-				}
-				if (y_paste < 0)
-				{
-					h_paste = header_cols_height;
-					y_paste = 0;
-				}
-
-				this->drawable_area.copy_from(header_captions_cols[i], x_paste, y_paste, w_paste, h_paste);
+				this->drawable_area.copy_from_text_to_rect(header_captions_cols[i], x, 0, thickness, header_cols_height);
 
 				if (x > draw_width)
 					break;
@@ -1730,23 +1705,7 @@ struct OW
 				if (does_row_have_selection(i))
 					this->drawable_area.fill_rect(0, y, header_rows_width-1, thickness-1, selected_cells_overlay.r, selected_cells_overlay.g, selected_cells_overlay.b, selected_cells_overlay.a);
 
-				int w_paste = header_captions_rows[i].w;
-				int h_paste = header_captions_rows[i].h;
-				int x_paste = header_rows_width/2 - w_paste/2;
-				int y_paste = (y+next_y)/2 - h_paste/2;
-
-				if (y_paste < y)
-				{
-					h_paste = thickness;
-					y_paste = y;
-				}
-				if (x_paste < 0)
-				{
-					w_paste = header_rows_width;
-					x_paste = 0;
-				}
-
-				this->drawable_area.copy_from(header_captions_rows[i], x_paste, y_paste, w_paste, h_paste);
+				this->drawable_area.copy_from_text_to_rect(header_captions_rows[i], 0, y, header_rows_width, thickness);
 
 				if (y > draw_height)
 					break;
@@ -1769,6 +1728,17 @@ struct OW
 
 					color_t cell_color = get_cell_color_bg(col_idx, row_idx);
 					this->drawable_area.fill_rect(x, y, thickness_col-1, thickness_row-1, cell_color.r, cell_color.g, cell_color.b, cell_color.a);
+
+					if (display[row_idx][col_idx].get_text().size() > 0)
+					{
+						this->drawable_area.copy_from_text_to_rect(display[row_idx][col_idx], x, y, thickness_col-1, thickness_row-1);
+					}
+
+					if (active_cell.first == col_idx && active_cell.second == row_idx)
+					{
+						this->drawable_area.draw_rect(x, y, thickness_col-1, thickness_row-1, color_active_cell.r, color_active_cell.g, color_active_cell.b, color_active_cell.a);
+						//this->drawable_area.draw_rect(x-1, y-1, thickness_col+1, thickness_row+1, color_active_cell.r, color_active_cell.g, color_active_cell.b, color_active_cell.a);
+					}
 
 					if (x > draw_width)
 						break;
@@ -1998,6 +1968,41 @@ struct OW
 			return -2;
 		}
 
+		std::string get_formula_at(unsigned int col_idx, unsigned int row_idx)
+		{
+			if (row_idx >= formulas.size() || col_idx >= formulas[row_idx].size())
+				return "";
+			return formulas[row_idx][col_idx];
+		}
+		void set_formula_at(unsigned int col_idx, unsigned int row_idx, std::string text)
+		{
+			if (row_idx >= formulas.size() || col_idx >= formulas[row_idx].size())
+				return;
+			formulas[row_idx][col_idx] = text;
+			display[row_idx][col_idx].set_text(text);
+		}
+
+		void set_active_cell(unsigned int col_idx, unsigned int row_idx)
+		{
+			auto p = std::make_pair(col_idx, row_idx);
+			if (active_cell != p)
+			{
+				set_formula_at(active_cell.first, active_cell.second, editor.get_text());
+
+				editor.set_text(get_formula_at(col_idx, row_idx));
+				active_cell = p;
+			}
+		}
+
+		unsigned int get_col_count() const
+		{
+			return thickness_cols.size();
+		}
+		unsigned int get_row_count() const
+		{
+			return thickness_rows.size();
+		}
+
 		virtual bool handle_event(event & ev) override
 		{
 			switch(ev.type)
@@ -2024,6 +2029,11 @@ struct OW
 					}
 
 					// mouse click
+
+					int col_idx = get_col_at(ev.data.mouse.x);
+					int row_idx = get_row_at(ev.data.mouse.y);
+
+					set_active_cell(std::max(0,col_idx),std::max(0,row_idx));
 
 					this->take_focus();
 
@@ -2101,8 +2111,6 @@ struct OW
 					}
 
 					bool changed = false;
-					int col_idx = get_col_at(ev.data.mouse.x);
-					int row_idx = get_row_at(ev.data.mouse.y);
 					if ( ! key_ctrl)
 					{
 						clear_selection();
@@ -2196,9 +2204,42 @@ struct OW
 					return changed;
 				}
 				case key:
-					if (ev.data.key.keycode == Scancode::Ctrl)
-						key_ctrl = ev.data.key.pressed;
-					break;
+				{
+					if ( ! ev.data.key.pressed)
+						break;
+					bool changed = false;
+					switch (ev.data.key.keycode)
+					{
+						case Scancode::Ctrl:
+							key_ctrl = ev.data.key.pressed;
+							break;
+						case Scancode::Up:
+							if (active_cell.second != 0)
+								set_active_cell(active_cell.first, active_cell.second - 1);
+							changed |= true;
+							break;
+						case Scancode::Down:
+							if (active_cell.second < get_row_count()-1)
+								set_active_cell(active_cell.first, active_cell.second + 1);
+							changed |= true;
+							break;
+						case Scancode::Left:
+							if (active_cell.first != 0)
+								set_active_cell(active_cell.first - 1, active_cell.second);
+							changed |= true;
+							break;
+						case Scancode::Right:
+							if (active_cell.first < get_col_count()-1)
+								set_active_cell(active_cell.first + 1, active_cell.second);
+							changed |= true;
+							break;
+						default:
+							editor.handle_event(ev);
+					}
+					if (changed)
+						this->set_needs_redraw();
+					return changed;
+				}
 				default:
 					break;
 			}
