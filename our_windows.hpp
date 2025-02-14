@@ -1515,6 +1515,18 @@ struct OW
 
 	struct Grid : Widget
 	{
+		struct CellData
+		{
+			std::string formula;
+			Text display;
+
+			void set_formula(std::string text)
+			{
+				formula = text;
+				display.set_text(text);
+			}
+		};
+
 		inline static const color_t color_cell_bg          = color_t(255);
 		inline static const color_t color_text_header      = color_t(32);
 		inline static const color_t color_lines            = color_t(160);
@@ -1528,8 +1540,7 @@ struct OW
 
 		std::pair<unsigned int, unsigned int> active_cell;
 
-		std::vector<std::vector<std::string>> formulas;
-		std::vector<std::vector<Text>> display;
+		std::vector<std::vector<CellData>> cell_data;
 
 		unsigned int header_cols_height = 18;
 		unsigned int header_rows_width = 40;
@@ -1572,23 +1583,23 @@ struct OW
 
 		bool has_integrity() const
 		{
+			unsigned int row_count = get_row_count();
+			unsigned int col_count = get_col_count();
+
 			// row count
-			assert(formulas.size() == display.size());
-			assert(formulas.size() == thickness_rows.size());
-			assert(formulas.size() >= selected_rows.size());
+			assert(row_count == cell_data.size());
+			assert(row_count == thickness_rows.size());
+			assert(row_count >= selected_rows.size());
 
 			// column count
-			unsigned int col_count = get_col_count();
-			unsigned int row_count = get_row_count();
-			for (auto & row : formulas)
+			for (auto & row : cell_data)
 				assert(row.size() == col_count);
-			for (auto & row : display)
-				assert(row.size() == col_count);
-			assert(thickness_rows.size() == row_count);
-			assert(selected_cols.size() <= col_count);
+			assert(col_count == thickness_cols.size());
+			assert(col_count >=  selected_cols.size());
 
 			// selection
-			assert (selected_cells.size() <= get_col_count() * get_row_count());
+			assert (selected_cells.size() <= col_count * row_count);
+
 			return true;
 		}
 
@@ -1599,10 +1610,8 @@ struct OW
 			if (before_idx > get_col_count())
 				return;
 
-			for (auto & row : formulas)
-				row.insert(std::next(std::begin(row), before_idx), count, "");
-			for (auto & row : display)
-				row.insert(std::next(std::begin(row), before_idx), count, Text("", parent_window));
+			for (auto & row : cell_data)
+				row.insert(std::next(std::begin(row), before_idx), count, {"", Text("", parent_window)});
 			thickness_cols.insert(std::next(std::begin(thickness_cols), before_idx), count, 50);
 
 			// column headers
@@ -1616,8 +1625,7 @@ struct OW
 			if (before_idx > get_row_count())
 				return;
 
-			formulas.insert(std::next(std::begin(formulas), before_idx), count, std::vector<std::string>(count, ""));
-			display .insert(std::next(std::begin(display ), before_idx), count, std::vector<Text>(count, Text("", parent_window)));
+			cell_data.insert(std::next(std::begin(cell_data), before_idx), count, std::vector<CellData>(count, {"", Text("", parent_window)}));
 			thickness_rows.insert(std::next(std::begin(thickness_rows), before_idx), count, 18);
 
 			// row headers
@@ -1729,9 +1737,9 @@ struct OW
 					color_t cell_color = get_cell_color_bg(col_idx, row_idx);
 					this->drawable_area.fill_rect(x, y, thickness_col-1, thickness_row-1, cell_color.r, cell_color.g, cell_color.b, cell_color.a);
 
-					if (display[row_idx][col_idx].get_text().size() > 0)
+					if (cell_data[row_idx][col_idx].formula.size() > 0)
 					{
-						this->drawable_area.copy_from_text_to_rect(display[row_idx][col_idx], x, y, thickness_col-1, thickness_row-1);
+						this->drawable_area.copy_from_text_to_rect(cell_data[row_idx][col_idx].display, x, y, thickness_col-1, thickness_row-1);
 					}
 
 					if (active_cell.first == col_idx && active_cell.second == row_idx)
@@ -1970,16 +1978,15 @@ struct OW
 
 		std::string get_formula_at(unsigned int col_idx, unsigned int row_idx)
 		{
-			if (row_idx >= formulas.size() || col_idx >= formulas[row_idx].size())
+			if (row_idx >= cell_data.size() || col_idx >= cell_data[row_idx].size())
 				return "";
-			return formulas[row_idx][col_idx];
+			return cell_data[row_idx][col_idx].formula;
 		}
 		void set_formula_at(unsigned int col_idx, unsigned int row_idx, std::string text)
 		{
-			if (row_idx >= formulas.size() || col_idx >= formulas[row_idx].size())
+			if (row_idx >= cell_data.size() || col_idx >= cell_data[row_idx].size())
 				return;
-			formulas[row_idx][col_idx] = text;
-			display[row_idx][col_idx].set_text(text);
+			cell_data[row_idx][col_idx].set_formula(text);
 		}
 
 		void set_active_cell(unsigned int col_idx, unsigned int row_idx)

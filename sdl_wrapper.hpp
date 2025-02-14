@@ -215,7 +215,6 @@ struct Text : monitorable<text_change_t>
 	{
 		set_text(other.text);
 	}
-
 	~Text()
 	{
 		if (message_texture)
@@ -223,6 +222,13 @@ struct Text : monitorable<text_change_t>
 		if (message_surface)
 			SDL_FreeSurface(message_surface);
 	}
+
+	Text & operator=(const Text & other)
+	{
+		set_text(other.text);
+		return *this;
+	}
+
 	const std::pair<int,int> get_size() { return {w,h}; }
 	const std::string & get_text() const { return text; }
 	void set_text(std::string s)
