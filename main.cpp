@@ -3,6 +3,7 @@
 
 #include "sdl_wrapper.hpp"
 #include "our_windows.hpp"
+#include "ourgrid.hpp"
 
 
 using OurW = OW<SDL>;
@@ -13,7 +14,7 @@ struct my_window : OurW::Window
 	OurW::Container top_container;
 	OurW::MenuBar menubar;
 	OurW::TextEdit text1;
-	OurW::Grid grid1;
+	Grid<OurW> grid1;
 
 	my_window(const char * title, int width, int height)
 		: OurW::Window(title, width, height)
