@@ -22,54 +22,19 @@ PYBIND11_MODULE(example, m) {
 }
 */
 
-icu::UnicodeString get_python_code(icu::UnicodeString & formula);
+struct CellData
+{
+	icu::UnicodeString formula;
+	std::string type;
+	Text display;
+	bool error = false;
+
+	void set_formula(icu::UnicodeString text);
+};
 
 template<typename T>
 struct Grid : T::Widget
 {
-	struct CellData
-	{
-		icu::UnicodeString formula;
-		Text display;
-		bool error = false;
-
-		void set_formula(icu::UnicodeString text)
-		{
-			formula = text;
-
-			if (formula.length() == 0 ||  formula[0] != '=')
-			{
-				display.set_text(text);
-				return;
-			}
-
-			//std::cout << formula << std::endl;
-			//std::cout << formula.substr(1) << std::endl;
-			//std::cout << code << std::endl;
-			auto code = get_python_code(formula);
-			std::string utf8_code;
-			code.toUTF8String(utf8_code);
-			auto locals = py::dict();
-			std::cout << utf8_code << std::endl;
-			try
-			{
-				py::exec(utf8_code, py::globals(), locals);
-				auto display_text = locals["display_text"].cast<std::string>();
-				display.set_text(display_text);
-				error = false;
-			}
-			catch(std::exception & e)
-			{
-				std::cout << e.what() << std::endl;
-				error = true;
-			}
-			catch(...)
-			{
-				error = true;
-			}
-		}
-	};
-
 	inline static const color_t color_cell_bg          = color_t(255);
 	inline static const color_t color_text_header      = color_t(32);
 	inline static const color_t color_lines            = color_t(160);
@@ -108,6 +73,9 @@ struct Grid : T::Widget
 
 	Text error_display;
 
+	py::dict globals;
+	py::dict locals;
+
 	Grid(T::Window * window, T::TextEdit & edit)
 		: T::Widget(window, {0,0,200,200})
 		, parent_window(window)
@@ -124,27 +92,6 @@ struct Grid : T::Widget
 		insert_rows(100, 0);
 
 		set_active_cell(0,0);
-
-/*
-			auto locals = py::dict();
-			//py::exec(R"(
-			//    def ok(a,b):
-			//    	return a*b
-			//)", py::globals(), locals);
-			icu::UnicodeString code = R"(
-from ourcalc import get_cell_value
-from ourcalc import *)";
-			//std::cout << code << std::endl;
-			std::string utf8_code;
-			code.toUTF8String(utf8_code);
-			try
-			{
-				py::exec(utf8_code, py::globals(), locals);
-			}
-			catch(...)
-			{
-			}
-*/
 	}
 
 	virtual int  width_packed() { return 0; }
@@ -180,7 +127,7 @@ from ourcalc import *)";
 			return;
 
 		for (auto & row : cell_data)
-			row.insert(std::next(std::begin(row), before_idx), count, {"", Text(parent_window)});
+			row.insert(std::next(std::begin(row), before_idx), count, {"", "", Text(parent_window)});
 		thickness_cols.insert(std::next(std::begin(thickness_cols), before_idx), count, 50);
 
 		// column headers
@@ -194,7 +141,7 @@ from ourcalc import *)";
 		if (before_idx > get_row_count())
 			return;
 
-		cell_data.insert(std::next(std::begin(cell_data), before_idx), count, std::vector<CellData>(count, {"", Text(parent_window)}));
+		cell_data.insert(std::next(std::begin(cell_data), before_idx), count, std::vector<CellData>(count, {"", "", Text(parent_window)}));
 		thickness_rows.insert(std::next(std::begin(thickness_rows), before_idx), count, 18);
 
 		// row headers
@@ -567,6 +514,12 @@ from ourcalc import *)";
 			return "";
 		return cell_data[row_idx][col_idx].display.get_text();
 	}
+	std::string get_type_at(unsigned int col_idx, unsigned int row_idx)
+	{
+		if (row_idx >= cell_data.size() || col_idx >= cell_data[row_idx].size())
+			return "";
+		return cell_data[row_idx][col_idx].type;
+	}
 
 	void set_active_cell(unsigned int col_idx, unsigned int row_idx)
 	{
@@ -836,25 +789,6 @@ from ourcalc import *)";
 
 inline static Grid<OW<SDL>> * global_grid;
 
-icu::UnicodeString get_python_code(icu::UnicodeString & formula)
-{
-	icu::UnicodeString code = R"(
-from ourcalc import *
-c = 0
-if "A" not in globals():
-	print("Adding columns")
-	while c <= _col_count_:
-		globals()[column_name_from_int(c)] = column(c)
-		c += 1
-else:
-	print("Columns already there")
-
-display_text = str(_formula_))";
-	code.findAndReplace(icu::UnicodeString::fromUTF8("_col_count_"), icu::UnicodeString::fromUTF8(std::to_string(global_grid->get_col_count())));
-	code.findAndReplace(icu::UnicodeString::fromUTF8("_formula_"  ), formula.tempSubString(1));
-	return code;
-}
-
 PYBIND11_EMBEDDED_MODULE(ourcalc_cell, m) {
 	// `m` is a `py::module_` which is used to bind functions and classes
 	m.def("get_cell_value", [](int c, int r) {
@@ -862,4 +796,76 @@ PYBIND11_EMBEDDED_MODULE(ourcalc_cell, m) {
 		global_grid->get_value_at(c, r).toUTF8String(tmp);
 		return tmp;
 	});
+	m.def("get_cell_type", [](int c, int r) {
+		return global_grid->get_type_at(c, r);
+	});
+}
+
+icu::UnicodeString get_python_code(icu::UnicodeString & formula)
+{
+	icu::UnicodeString code = R"(
+from ourcalc import *
+
+# create columns if needed
+if "ourcalc_col_count" in globals():
+	c = globals()["ourcalc_col_count"]	
+else:
+	c = 0
+for i in range(c,_col_count_):
+	globals()[column_name_from_int(i)] = column(i)
+globals()["ourcalc_col_count"] = _col_count_ + 1
+
+result = _formula_
+
+ourcalc_display_text = str(result)
+ourcalc_display_type = result.__class__.__name__
+)";
+
+	auto col_count_str = icu::UnicodeString::fromUTF8(std::to_string(global_grid->get_col_count()));
+
+	code.findAndReplace("_col_count_", col_count_str);
+	code.findAndReplace("_formula_"  , formula.tempSubString(1));
+	return code;
+}
+
+void CellData::set_formula(icu::UnicodeString text)
+{
+	formula = text;
+
+	if (formula.length() == 0 ||  formula[0] != '=')
+	{
+		display.set_text(text);
+		type = "str";
+		return;
+	}
+
+	//std::cout << formula << std::endl;
+	//std::cout << formula.substr(1) << std::endl;
+	//std::cout << code << std::endl;
+	auto code = get_python_code(formula);
+	std::string utf8_code;
+	code.toUTF8String(utf8_code);
+	auto & locals  = global_grid->locals;
+	auto & globals = global_grid->globals;
+	std::cout << utf8_code << std::endl;
+	try
+	{
+		py::exec(utf8_code, globals, locals);
+		auto display_text = locals["ourcalc_display_text"].cast<std::string>();
+		type              = locals["ourcalc_display_type"].cast<std::string>();
+		display.set_text(display_text);
+
+		std::cout << type << ": " << display_text << std::endl;
+
+		error = false;
+	}
+	catch(std::exception & e)
+	{
+		std::cout << e.what() << std::endl;
+		error = true;
+	}
+	catch(...)
+	{
+		error = true;
+	}
 }
