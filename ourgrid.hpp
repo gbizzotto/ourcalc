@@ -22,6 +22,7 @@ PYBIND11_MODULE(example, m) {
 }
 */
 
+icu::UnicodeString get_python_code(icu::UnicodeString & formula);
 
 template<typename T>
 struct Grid : T::Widget
@@ -44,19 +45,12 @@ struct Grid : T::Widget
 
 			//std::cout << formula << std::endl;
 			//std::cout << formula.substr(1) << std::endl;
-			auto locals = py::dict();
-			//py::exec(R"(
-			//    def ok(a,b):
-			//    	return a*b
-			//)", py::globals(), locals);
-			icu::UnicodeString code = R"(number = 42
-from fast_calc import A
-display_text = str()";
-			code += formula.tempSubString(1);
-			code += ")";
 			//std::cout << code << std::endl;
+			auto code = get_python_code(formula);
 			std::string utf8_code;
 			code.toUTF8String(utf8_code);
+			auto locals = py::dict();
+			//std::cout << utf8_code << std::endl;
 			try
 			{
 				py::exec(utf8_code, py::globals(), locals);
@@ -130,6 +124,27 @@ display_text = str()";
 		insert_rows(100, 0);
 
 		set_active_cell(0,0);
+
+/*
+			auto locals = py::dict();
+			//py::exec(R"(
+			//    def ok(a,b):
+			//    	return a*b
+			//)", py::globals(), locals);
+			icu::UnicodeString code = R"(
+from ourcalc import get_cell_value
+from ourcalc import *)";
+			//std::cout << code << std::endl;
+			std::string utf8_code;
+			code.toUTF8String(utf8_code);
+			try
+			{
+				py::exec(utf8_code, py::globals(), locals);
+			}
+			catch(...)
+			{
+			}
+*/
 	}
 
 	virtual int  width_packed() { return 0; }
@@ -821,12 +836,28 @@ display_text = str()";
 
 inline static Grid<OW<SDL>> * global_grid;
 
-PYBIND11_EMBEDDED_MODULE(fast_calc, m) {
+icu::UnicodeString get_python_code(icu::UnicodeString & formula)
+{
+	icu::UnicodeString code = R"(
+from ourcalc import *
+c = 0
+while c <= )";
+	code += icu::UnicodeString::fromUTF8(std::to_string(global_grid->get_col_count()));
+	code += R"(:
+	globals()[column_name_from_int(c)] = column(c)
+	c += 1
+
+display_text = str()";
+	code += formula.tempSubString(1);
+	code += ")";
+	return code;
+}
+
+PYBIND11_EMBEDDED_MODULE(ourcalc_cell, m) {
 	// `m` is a `py::module_` which is used to bind functions and classes
-	m.def("A", [](int i) {
+	m.def("get_cell_value", [](int c, int r) {
 		std::string tmp;
-		global_grid->get_value_at(0, i).toUTF8String(tmp);
+		global_grid->get_value_at(c, r).toUTF8String(tmp);
 		return tmp;
 	});
 }
-
