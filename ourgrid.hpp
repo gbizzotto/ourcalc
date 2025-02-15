@@ -50,7 +50,7 @@ struct Grid : T::Widget
 			std::string utf8_code;
 			code.toUTF8String(utf8_code);
 			auto locals = py::dict();
-			//std::cout << utf8_code << std::endl;
+			std::cout << utf8_code << std::endl;
 			try
 			{
 				py::exec(utf8_code, py::globals(), locals);
@@ -841,15 +841,17 @@ icu::UnicodeString get_python_code(icu::UnicodeString & formula)
 	icu::UnicodeString code = R"(
 from ourcalc import *
 c = 0
-while c <= )";
-	code += icu::UnicodeString::fromUTF8(std::to_string(global_grid->get_col_count()));
-	code += R"(:
-	globals()[column_name_from_int(c)] = column(c)
-	c += 1
+if "A" not in globals():
+	print("Adding columns")
+	while c <= _col_count_:
+		globals()[column_name_from_int(c)] = column(c)
+		c += 1
+else:
+	print("Columns already there")
 
-display_text = str()";
-	code += formula.tempSubString(1);
-	code += ")";
+display_text = str(_formula_))";
+	code.findAndReplace(icu::UnicodeString::fromUTF8("_col_count_"), icu::UnicodeString::fromUTF8(std::to_string(global_grid->get_col_count())));
+	code.findAndReplace(icu::UnicodeString::fromUTF8("_formula_"  ), formula.tempSubString(1));
 	return code;
 }
 
