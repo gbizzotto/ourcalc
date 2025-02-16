@@ -659,32 +659,48 @@ struct Grid : T::Widget
 					this->mouse_grab(this,
 						[row_edge_idx,this,row_thickness](T::Widget*, [[maybe_unused]]int grab_x, [[maybe_unused]]int grab_y, [[maybe_unused]]int drag_x, [[maybe_unused]]int drag_y)
 						{
-							this->header_cols_height = row_thickness + drag_y - grab_y;
-							this->set_needs_redraw();
+							unsigned int new_thickness = (unsigned int)std::max(1, (int)row_thickness + drag_y - grab_y);
+							if (this->header_cols_height != new_thickness)
+							{
+								this->header_cols_height = new_thickness;
+								this->set_needs_redraw();
+							}
 						},
 						[row_edge_idx,this,row_thickness](T::Widget*, [[maybe_unused]]int grab_x, [[maybe_unused]]int grab_y, [[maybe_unused]]int ungrab_x, [[maybe_unused]]int ungrab_y)
 						{
 							this->parent_window->set_cursor(MouseCursorImg::ARROW);
-							this->header_cols_height = row_thickness + ungrab_y - grab_y;
-							this->set_needs_redraw();
+							unsigned int new_thickness = (unsigned int)std::max(1, (int)row_thickness + ungrab_y - grab_y);
+							if (this->header_cols_height != new_thickness)
+							{
+								this->header_cols_height = new_thickness;
+								this->set_needs_redraw();
+							}
 						});
 					break;
 				}
 				else if (row_edge_idx >= 0)
 				{
-					unsigned row_thickness = this->thickness_rows[row_edge_idx];
+					unsigned int row_thickness = this->thickness_rows[row_edge_idx];
 					parent_window->set_cursor(MouseCursorImg::SIZENS);
 					this->mouse_grab(this,
 						[row_edge_idx,this,row_thickness](T::Widget*, [[maybe_unused]]int grab_x, [[maybe_unused]]int grab_y, [[maybe_unused]]int drag_x, [[maybe_unused]]int drag_y)
 						{
-							this->thickness_rows[row_edge_idx] = row_thickness + drag_y - grab_y;
-							this->set_needs_redraw();
+							unsigned int new_thickness = (unsigned int)std::max(1, (int)row_thickness + drag_y - grab_y);
+							if (this->thickness_rows[row_edge_idx] != new_thickness)
+							{
+								this->thickness_rows[row_edge_idx] = new_thickness;
+								this->set_needs_redraw();
+							}
 						},
 						[row_edge_idx,this,row_thickness](T::Widget*, [[maybe_unused]]int grab_x, [[maybe_unused]]int grab_y, [[maybe_unused]]int ungrab_x, [[maybe_unused]]int ungrab_y)
 						{
 							this->parent_window->set_cursor(MouseCursorImg::ARROW);
-							this->thickness_rows[row_edge_idx] = row_thickness + ungrab_y - grab_y;
-							this->set_needs_redraw();
+							unsigned int new_thickness = (unsigned int)std::max(1, (int)row_thickness + ungrab_y - grab_y);
+							if (this->thickness_rows[row_edge_idx] != new_thickness)
+							{
+								this->thickness_rows[row_edge_idx] = new_thickness;
+								this->set_needs_redraw();
+							}
 						});
 					break;
 				}
@@ -695,14 +711,22 @@ struct Grid : T::Widget
 					this->mouse_grab(this,
 						[col_edge_idx,this,col_thickness](T::Widget*, [[maybe_unused]]int grab_x, [[maybe_unused]]int grab_y, [[maybe_unused]]int drag_x, [[maybe_unused]]int drag_y)
 						{
-							this->header_rows_width = col_thickness + drag_x - grab_x;
-							this->set_needs_redraw();
+							unsigned int new_thickness = (unsigned int) std::max(1, (int)col_thickness + drag_x - grab_x);
+							if (this->header_rows_width != new_thickness)
+							{
+								this->header_rows_width = new_thickness;
+								this->set_needs_redraw();
+							}
 						},
 						[col_edge_idx,this,col_thickness](T::Widget*, [[maybe_unused]]int grab_x, [[maybe_unused]]int grab_y, [[maybe_unused]]int ungrab_x, [[maybe_unused]]int ungrab_y)
 						{
+							unsigned int new_thickness = (unsigned int) std::max(1, (int)col_thickness + ungrab_x - grab_x);
+							if (this->header_rows_width != new_thickness)
+							{
+								this->header_rows_width = new_thickness;
+								this->set_needs_redraw();
+							}
 							this->parent_window->set_cursor(MouseCursorImg::ARROW);
-							this->header_rows_width = col_thickness + ungrab_x - grab_x;
-							this->set_needs_redraw();
 						});
 					break;
 				}
@@ -713,14 +737,22 @@ struct Grid : T::Widget
 					this->mouse_grab(this,
 						[col_edge_idx,this,col_thickness](T::Widget*, [[maybe_unused]]int grab_x, [[maybe_unused]]int grab_y, [[maybe_unused]]int drag_x, [[maybe_unused]]int drag_y)
 						{
-							this->thickness_cols[col_edge_idx] = col_thickness + drag_x - grab_x;
-							this->set_needs_redraw();
+							unsigned int new_thickness = (unsigned int) std::max(1, (int)col_thickness + drag_x - grab_x);
+							if (this->thickness_cols[col_edge_idx] != new_thickness)
+							{
+								this->thickness_cols[col_edge_idx] = new_thickness;
+								this->set_needs_redraw();
+							}
 						},
 						[col_edge_idx,this,col_thickness](T::Widget*, [[maybe_unused]]int grab_x, [[maybe_unused]]int grab_y, [[maybe_unused]]int ungrab_x, [[maybe_unused]]int ungrab_y)
 						{
+							unsigned int new_thickness = (unsigned int) std::max(1, (int)col_thickness + ungrab_x - grab_x);
+							if (this->thickness_cols[col_edge_idx] != new_thickness)
+							{
+								this->thickness_cols[col_edge_idx] = new_thickness;
+								this->set_needs_redraw();
+							}
 							this->parent_window->set_cursor(MouseCursorImg::ARROW);
-							this->thickness_cols[col_edge_idx] = col_thickness + ungrab_x - grab_x;
-							this->set_needs_redraw();
 						});
 					break;
 				}
