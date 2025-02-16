@@ -61,6 +61,10 @@ int main()
 	assert(number_to_column_code(26*27+26) == "ABA");
 	OurW::Manager wm;
 
+	for (unsigned int i=0 ; i<55 ; ++i)
+		if (i != parse_col_name(number_to_column_code(i)))
+			std::cout << "Bad: " << i << ", col: " << number_to_column_code(i) << " != " << parse_col_name(number_to_column_code(i)) << std::endl;
+
 	/*auto & w = */wm.make_window<my_window>("OurCalc", 1024, 768);
 
 	wm.loop();

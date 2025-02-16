@@ -956,7 +956,9 @@ struct OW
 				}
 				case text:
 				{
-					caption.set_text(caption.text.insert(char_pos, icu::UnicodeString::fromUTF8(ev.data.text.composition)));
+					auto text = caption.text;
+					text.insert(char_pos, icu::UnicodeString::fromUTF8(ev.data.text.composition));
+					caption.set_text(text);
 					++char_pos;
 					cursor_x = text_x + caption.get_char_x(char_pos);
 					this->set_needs_redraw();

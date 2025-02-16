@@ -239,16 +239,19 @@ struct Text : monitorable<text_change_t>
 
 	const std::pair<int,int> get_size() { return {w,h}; }
 	const icu::UnicodeString & get_text() const { return text; }
-	void set_text(icu::UnicodeString s)
+	bool set_text(icu::UnicodeString s)
 	{
+		if (text == s && message_texture != nullptr)
+			return false;
 		text = s;
 		render();
 		calculate_char_pos();
 		notify_monitors(text_change_t::text_changed);
+		return true;
 	}
-	void set_text(std::string s)
+	bool set_text(std::string s)
 	{
-		set_text(icu::UnicodeString::fromUTF8(s));
+		return set_text(icu::UnicodeString::fromUTF8(s));
 	}
 
 	void calculate_char_pos()

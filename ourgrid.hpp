@@ -6,6 +6,7 @@
 #include "pybind11/embed.h"
 
 #include <iostream>
+#include <vector>
 #include "our_windows.hpp"
 #include "sdl_wrapper.hpp"
 
@@ -22,14 +23,31 @@ PYBIND11_MODULE(example, m) {
 }
 */
 
+std::string column_name_from_int(int c);
+
 struct CellData
 {
 	icu::UnicodeString formula;
 	std::string type;
 	Text display;
 	bool error = false;
+	std::vector<std::pair<unsigned int, unsigned int>> dependent_cells = {};
 
-	void set_formula(icu::UnicodeString text);
+	bool reevaluate(int col, int row);
+	bool set_formula(icu::UnicodeString contents, int col, int row)
+	{
+		if (formula == contents)
+			return false;
+		formula = contents;
+		return reevaluate(col, row);
+	}
+	void add_dependent(unsigned int col, unsigned int row)
+	{
+		auto p = std::make_pair(col, row);
+		auto it = std::lower_bound(std::begin(dependent_cells), std::end(dependent_cells), p);
+		if (it == std::end(dependent_cells) || *it != p)
+			dependent_cells.insert(it, p);
+	}
 };
 
 template<typename T>
@@ -88,10 +106,31 @@ struct Grid : T::Widget
 		this-> inter_padding = 0;
 		this->color_bg = 160;
 
-		insert_columns(50, 0);
+		run_python("from ourcalc import *");
+
+		insert_columns(20, 0);
 		insert_rows(100, 0);
 
 		set_active_cell(0,0);
+
+	}
+
+	void run_python(std::string code)
+	{
+		try
+		{
+			//std::cout << "Running:" << std::endl
+			//          << code << std::endl;
+			py::exec(code, globals, locals);
+		}
+		catch(std::exception & e)
+		{
+			std::cout << e.what() << std::endl;
+		}
+		catch(...)
+		{
+			std::cout << "Unknown exception" << std::endl;
+		}
 	}
 
 	virtual int  width_packed() { return 0; }
@@ -125,10 +164,26 @@ struct Grid : T::Widget
 
 		if (before_idx > get_col_count())
 			return;
-
+		
+		std::string code;
+		int row_number = 0;
 		for (auto & row : cell_data)
+		{
 			row.insert(std::next(std::begin(row), before_idx), count, {"", "", Text(parent_window)});
+
+			for (unsigned int col_number=before_idx,i=0 ; i<count ; ++i,++col_number)
+				code.append(column_name_from_int(col_number))
+				    .append(std::to_string(row_number))
+				    .append("=make_ourcell('',")
+				    .append(std::to_string(col_number))
+				    .append(",")
+				    .append(std::to_string(row_number))
+				    .append(")\n");
+			++row_number;
+		}
 		thickness_cols.insert(std::next(std::begin(thickness_cols), before_idx), count, 50);
+
+		run_python(code);
 
 		// column headers
 		for (decltype(count) i=0 ; i<count ; ++i)
@@ -141,8 +196,23 @@ struct Grid : T::Widget
 		if (before_idx > get_row_count())
 			return;
 
+		std::string code;
+		for (unsigned col_number=0 ; col_number < thickness_cols.size() ; ++col_number)
+		{
+			for (unsigned int row_number=before_idx,i=0 ; i<count ; ++i,++row_number)
+				code.append(column_name_from_int(col_number))
+				    .append(std::to_string(row_number))
+				    .append("=make_ourcell('',")
+				    .append(std::to_string(col_number))
+				    .append(",")
+				    .append(std::to_string(row_number))
+				    .append(")\n");
+		}
+
 		cell_data.insert(std::next(std::begin(cell_data), before_idx), count, std::vector<CellData>(count, {"", "", Text(parent_window)}));
 		thickness_rows.insert(std::next(std::begin(thickness_rows), before_idx), count, 18);
+
+		run_python(code);
 
 		// row headers
 		for (decltype(count) i=0 ; i<count ; ++i)
@@ -495,6 +565,12 @@ struct Grid : T::Widget
 		return -2;
 	}
 
+	CellData * get_cell_at(unsigned int col_idx, unsigned int row_idx)
+	{
+		if (row_idx >= cell_data.size() || col_idx >= cell_data[row_idx].size())
+			return nullptr;
+		return &cell_data[row_idx][col_idx];
+	}
 	icu::UnicodeString get_formula_at(unsigned int col_idx, unsigned int row_idx)
 	{
 		if (row_idx >= cell_data.size() || col_idx >= cell_data[row_idx].size())
@@ -505,8 +581,8 @@ struct Grid : T::Widget
 	{
 		if (row_idx >= cell_data.size() || col_idx >= cell_data[row_idx].size())
 			return;
-		cell_data[row_idx][col_idx].set_formula(text);
-		this->set_needs_redraw();
+		if (cell_data[row_idx][col_idx].set_formula(text, col_idx, row_idx))
+			this->set_needs_redraw();
 	}
 	icu::UnicodeString get_value_at(unsigned int col_idx, unsigned int row_idx)
 	{
@@ -789,6 +865,7 @@ struct Grid : T::Widget
 
 inline static Grid<OW<SDL>> * global_grid;
 
+/*
 PYBIND11_EMBEDDED_MODULE(ourcalc_cell, m) {
 	// `m` is a `py::module_` which is used to bind functions and classes
 	m.def("get_cell_value", [](int c, int r) {
@@ -800,62 +877,179 @@ PYBIND11_EMBEDDED_MODULE(ourcalc_cell, m) {
 		return global_grid->get_type_at(c, r);
 	});
 }
+*/
 
-icu::UnicodeString get_python_code(icu::UnicodeString & formula)
+unsigned int parse_col_name(std::string col_name)
+{
+	if (col_name.size() == 0)
+		throw std::exception();
+	unsigned int result = col_name[0] - 'A';
+	for(unsigned int i=1 ; i<col_name.size() ; ++i)
+	{
+		result = (result + 1)*26;
+		result += col_name[i] - 'A';
+	}
+	return result;
+}
+
+std::tuple<unsigned int, unsigned int> parse_cell_name(const std::string & cell_name)
+{
+	unsigned int col, row;
+
+	auto i = 0;
+	while (cell_name[i] >= 'A' && cell_name[i] <= 'Z')
+		++i;
+	col = parse_col_name(cell_name.substr(0, i));
+	row = std::stoi(cell_name.substr(i));
+	return {col, row};
+}
+
+std::string column_name_from_int(int c)
+{
+	int remainder = c % 26;
+	c /= 26;
+	std::string result(1, 'A'+remainder);
+	while (c != 0)
+	{
+		--c;
+		remainder = c % 26;
+		c /= 26;
+		result.push_back('A'+remainder);
+	}
+	std::reverse(result.begin(), result.end());
+	return result;
+}
+
+icu::UnicodeString get_formula_python_code(icu::UnicodeString & formula, int col, int row)
 {
 	icu::UnicodeString code = R"(
-from ourcalc import *
-
-# create columns if needed
-if "ourcalc_col_count" in globals():
-	c = globals()["ourcalc_col_count"]	
-else:
-	c = 0
-for i in range(c,_col_count_):
-	globals()[column_name_from_int(i)] = column(i)
-globals()["ourcalc_col_count"] = _col_count_ + 1
-
 result = _formula_
+_colname__row_ = make_ourcell(result, _col_, _row_)
 
 ourcalc_display_text = str(result)
 ourcalc_display_type = result.__class__.__name__
+
+import ast
+code = '_formula_'
+root = ast.parse(code)
+root = ast.walk(root)
+n = ast.Name
+var_set = set()
+for node in root:
+	if isinstance(node,n) and node.id in locals() and is_ourcell(locals()[str(node.id)]):
+		var_set.add(node.id)
+ourcalc_variables = ','.join(var_set)
 )";
 
-	auto col_count_str = icu::UnicodeString::fromUTF8(std::to_string(global_grid->get_col_count()));
-
-	code.findAndReplace("_col_count_", col_count_str);
+	code.findAndReplace("_col_", icu::UnicodeString::fromUTF8(std::to_string(col)));
+	code.findAndReplace("_row_", icu::UnicodeString::fromUTF8(std::to_string(row)));
+	code.findAndReplace("_colname_"  , icu::UnicodeString::fromUTF8(column_name_from_int(col)));	
 	code.findAndReplace("_formula_"  , formula.tempSubString(1));
 	return code;
 }
-
-void CellData::set_formula(icu::UnicodeString text)
+icu::UnicodeString get_string_python_code(icu::UnicodeString & formula, int col, int row)
 {
-	formula = text;
+	icu::UnicodeString code = R"(
+result = '''_formula_'''
+_colname__row_ = make_ourcell(result, _col_, _row_)
+
+ourcalc_display_text = str(result)
+ourcalc_display_type = result.__class__.__name__
+ourcalc_variables = ""
+)";
+
+	code.findAndReplace("_col_", icu::UnicodeString::fromUTF8(std::to_string(col)));
+	code.findAndReplace("_row_", icu::UnicodeString::fromUTF8(std::to_string(row)));
+	code.findAndReplace("_colname_"  , icu::UnicodeString::fromUTF8(column_name_from_int(col)));	
+	code.findAndReplace("_formula_"  , formula);
+	return code;
+}
+
+std::vector<std::string> split(const std::string& s, const std::string& delimiter)
+{
+	size_t last = 0;
+	size_t next = 0;
+	std::vector<std::string> result;
+	while ((next = s.find(delimiter, last)) != std::string::npos)
+	{
+		result.push_back(s.substr(last, next-last));
+		last = next + 1;
+	}
+	if (last != s.size())
+		result.push_back(s.substr(last));
+	return result;
+}
+
+bool CellData::reevaluate(int col, int row)
+{
+	bool display_changed;
 
 	if (formula.length() == 0 ||  formula[0] != '=')
 	{
-		display.set_text(text);
-		type = "str";
-		return;
+		auto code = get_string_python_code(formula, col, row);
+		std::string utf8_code;
+		code.toUTF8String(utf8_code);
+		auto & locals  = global_grid->locals;
+		auto & globals = global_grid->globals;
+		//std::cout << utf8_code << std::endl;
+		try
+		{
+			py::exec(utf8_code, globals, locals);
+			auto display_text = locals["ourcalc_display_text"].cast<std::string>();
+			type              = locals["ourcalc_display_type"].cast<std::string>();
+			display_changed = display.set_text(display_text);
+
+			//std::cout << "Display text: " << display_text << std::endl;
+			error = false;
+		}
+		catch(std::exception & e)
+		{
+			std::cout << e.what() << std::endl;
+			error = true;
+		}
+		catch(...)
+		{
+			error = true;
+		}
+		return display_changed;
 	}
 
 	//std::cout << formula << std::endl;
 	//std::cout << formula.substr(1) << std::endl;
 	//std::cout << code << std::endl;
-	auto code = get_python_code(formula);
+	auto code = get_formula_python_code(formula, col, row);
 	std::string utf8_code;
 	code.toUTF8String(utf8_code);
 	auto & locals  = global_grid->locals;
 	auto & globals = global_grid->globals;
-	std::cout << utf8_code << std::endl;
+	//std::cout << utf8_code << std::endl;
 	try
 	{
 		py::exec(utf8_code, globals, locals);
 		auto display_text = locals["ourcalc_display_text"].cast<std::string>();
 		type              = locals["ourcalc_display_type"].cast<std::string>();
-		display.set_text(display_text);
+		std::vector<std::string> variables = split(locals["ourcalc_variables"].cast<std::string>(), ",");
+		display_changed = display.set_text(display_text);
 
-		std::cout << type << ": " << display_text << std::endl;
+		//std::cout << "Display text: " << display_text << std::endl;
+
+		//std::cout << variables.size() << " variables in code: ";
+		//for (auto & v : variables)
+		//	std::cout << v;
+		//std::cout << std::endl;
+
+		for (const std::string & v : variables)
+		{
+			auto [ref_col, ref_row] = parse_cell_name(v);
+			auto * cell = global_grid->get_cell_at(ref_col, ref_row);
+			cell->add_dependent(col, row);
+		}
+
+		for (const auto & p : dependent_cells)
+		{
+			auto * cell = global_grid->get_cell_at(p.first, p.second);
+			cell->reevaluate(col, row);
+		}
 
 		error = false;
 	}
@@ -868,4 +1062,5 @@ void CellData::set_formula(icu::UnicodeString text)
 	{
 		error = true;
 	}
+	return display_changed;
 }
