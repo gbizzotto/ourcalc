@@ -31,13 +31,20 @@ struct CellData
 	std::string type;
 	Text display;
 	bool error = false;
+	std::set<std::pair<unsigned int,unsigned int>> dependencies = std::set<std::pair<unsigned int,unsigned int>>();
+	std::string error_msg = std::string("");
 	std::vector<std::pair<unsigned int, unsigned int>> dependent_cells = {};
 
+	bool do_dependencies_depend_on_us(decltype(dependencies) deps, unsigned int col, unsigned int row);
+	void clear_dependencies(unsigned int col, unsigned int row);
 	bool reevaluate(int col, int row);
 	bool set_formula(icu::UnicodeString contents, int col, int row)
 	{
 		if (formula == contents)
 			return false;
+
+		clear_dependencies(col, row);
+
 		formula = contents;
 		return reevaluate(col, row);
 	}
@@ -47,6 +54,13 @@ struct CellData
 		auto it = std::lower_bound(std::begin(dependent_cells), std::end(dependent_cells), p);
 		if (it == std::end(dependent_cells) || *it != p)
 			dependent_cells.insert(it, p);
+	}
+	void remove_dependent(unsigned int col, unsigned int row)
+	{
+		auto p = std::make_pair(col, row);
+		auto it = std::lower_bound(std::begin(dependent_cells), std::end(dependent_cells), p);
+		if (it != std::end(dependent_cells) && *it == p)
+			dependent_cells.erase(it);
 	}
 };
 
@@ -1015,14 +1029,15 @@ std::vector<std::string> split(const std::string& s, const std::string& delimite
 bool CellData::reevaluate(int col, int row)
 {
 	bool display_changed;
+	auto & locals  = global_grid->locals;
+	auto & globals = global_grid->globals;
+	bool there_was_en_error = error;
 
 	if (formula.length() == 0 ||  formula[0] != '=')
 	{
 		auto code = get_string_python_code(formula, col, row);
 		std::string utf8_code;
 		code.toUTF8String(utf8_code);
-		auto & locals  = global_grid->locals;
-		auto & globals = global_grid->globals;
 		//std::cout << utf8_code << std::endl;
 		try
 		{
@@ -1038,10 +1053,14 @@ bool CellData::reevaluate(int col, int row)
 		{
 			std::cout << e.what() << std::endl;
 			error = true;
+			error_msg = e.what();
+			display_changed = !there_was_en_error;
 		}
 		catch(...)
 		{
 			error = true;
+			error_msg = "Unknown exception while evaluating expression.";
+			display_changed = !there_was_en_error;
 		}
 		return display_changed;
 	}
@@ -1052,16 +1071,28 @@ bool CellData::reevaluate(int col, int row)
 	auto code = get_formula_python_code(formula, col, row);
 	std::string utf8_code;
 	code.toUTF8String(utf8_code);
-	auto & locals  = global_grid->locals;
-	auto & globals = global_grid->globals;
 	//std::cout << utf8_code << std::endl;
 	try
 	{
 		py::exec(utf8_code, globals, locals);
-		auto display_text = locals["ourcalc_display_text"].cast<std::string>();
-		type              = locals["ourcalc_display_type"].cast<std::string>();
+		auto calculated_text = locals["ourcalc_display_text"].cast<std::string>();
+		auto calculated_type = locals["ourcalc_display_type"].cast<std::string>();
 		std::vector<std::string> variables = split(locals["ourcalc_variables"].cast<std::string>(), ",");
-		display_changed = display.set_text(display_text);
+
+
+		error = false;
+		// Check for dependency cells that contain error
+		for (const std::string & v : variables)
+		{
+			auto [ref_col, ref_row] = parse_cell_name(v);
+			auto * cell = global_grid->get_cell_at(ref_col, ref_row);
+			if (cell->error)
+			{
+				error = true;
+				error_msg = v + std::string(" has an error.");
+				//return true;
+			}
+		}
 
 		//std::cout << "Display text: " << display_text << std::endl;
 
@@ -1070,29 +1101,80 @@ bool CellData::reevaluate(int col, int row)
 		//	std::cout << v;
 		//std::cout << std::endl;
 
+		// add dependecies cells
 		for (const std::string & v : variables)
 		{
 			auto [ref_col, ref_row] = parse_cell_name(v);
 			auto * cell = global_grid->get_cell_at(ref_col, ref_row);
+			if ( ! cell)
+				continue;
+			dependencies.insert(std::make_pair(ref_col, ref_row));
 			cell->add_dependent(col, row);
 		}
 
-		for (const auto & p : dependent_cells)
+		// check for circular dependencies
+		if (this->do_dependencies_depend_on_us(dependencies, col, row))
 		{
-			auto * cell = global_grid->get_cell_at(p.first, p.second);
-			cell->reevaluate(col, row);
+			error = true;
+			error_msg = "Circula dependency";
 		}
 
-		error = false;
+		if ( ! error)
+		{
+			type = calculated_type;
+			display_changed = there_was_en_error;
+			display_changed |= display.set_text(calculated_text);
+
+			// update dependent cells
+			for (const auto & p : dependent_cells)
+			{
+				auto * cell = global_grid->get_cell_at(p.first, p.second);
+				cell->reevaluate(p.first, p.second);
+			}
+		}
 	}
 	catch(std::exception & e)
 	{
 		std::cout << e.what() << std::endl;
 		error = true;
+		error_msg = e.what();
+		display_changed = !there_was_en_error;
 	}
 	catch(...)
 	{
 		error = true;
+		error_msg = "Unknown exception while evaluating expression.";
+		display_changed = !there_was_en_error;
 	}
 	return display_changed;
+}
+
+void CellData::clear_dependencies(unsigned int col, unsigned int row)
+{
+	for (auto & p : dependencies)
+	{
+		auto * cell = global_grid->get_cell_at(p.first, p.second);
+		if ( ! cell)
+			continue;
+		cell->remove_dependent(col, row);
+	}
+	dependencies.clear();
+}
+
+bool CellData::do_dependencies_depend_on_us(decltype(dependencies) deps, unsigned int col, unsigned int row)
+{
+	auto this_pair = std::make_pair(col, row);
+	for (const auto & p : deps)
+		if (p == this_pair)
+			return true;
+	deps.insert(this_pair);
+	for (const auto & p : dependent_cells)
+	{
+		auto * cell = global_grid->get_cell_at(p.first, p.second);
+		if ( ! cell)
+			continue;
+		if (cell->do_dependencies_depend_on_us(deps, p.first, p.second))
+			return true;
+	}
+	return false;
 }
