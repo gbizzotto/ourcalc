@@ -395,7 +395,7 @@ struct DrawableArea
 		SDL_RenderCopy(renderer, text.message_texture, NULL, &rect);
 		SDL_SetRenderTarget(renderer, NULL);
 	}
-	void copy_from_text_to_rect(Text & text, int dest_x, int dest_y, int dest_w, int dest_h)
+	void copy_from_text_to_rect_center(Text & text, int dest_x, int dest_y, int dest_w, int dest_h)
 	{
 		SDL_Rect rect_srca;
 		rect_srca.x = 0;
@@ -425,6 +425,74 @@ struct DrawableArea
 		else if (dest_h > text.h)
 		{
 			rect_dest.y += (dest_h-text.h)/2;
+			rect_dest.h = text.h;
+		}
+		SDL_SetRenderTarget(renderer, texture);
+		SDL_RenderCopy(renderer, text.message_texture, &rect_srca, &rect_dest);
+		SDL_SetRenderTarget(renderer, NULL);
+	}
+	void copy_from_text_to_rect_left(Text & text, int dest_x, int dest_y, int dest_w, int dest_h)
+	{
+		SDL_Rect rect_srca;
+		rect_srca.x = 0;
+		rect_srca.y = 0;
+		rect_srca.w = text.w;
+		rect_srca.h = text.h;
+		SDL_Rect rect_dest;
+		rect_dest.x = dest_x;
+		rect_dest.y = dest_y;
+		rect_dest.w = dest_w;
+		rect_dest.h = dest_h;
+		if (dest_w < text.w)
+		{
+			rect_srca.w = dest_w;
+		}
+		else if (dest_w > text.w)
+		{
+			rect_dest.w = text.w;
+		}
+		if (dest_h < text.h)
+		{
+			rect_srca.h = dest_h;
+		}
+		else if (dest_h > text.h)
+		{
+			rect_dest.h = text.h;
+		}
+		SDL_SetRenderTarget(renderer, texture);
+		SDL_RenderCopy(renderer, text.message_texture, &rect_srca, &rect_dest);
+		SDL_SetRenderTarget(renderer, NULL);
+	}
+	void copy_from_text_to_rect_right(Text & text, int dest_x, int dest_y, int dest_w, int dest_h)
+	{
+		SDL_Rect rect_srca;
+		rect_srca.x = 0;
+		rect_srca.y = 0;
+		rect_srca.w = text.w;
+		rect_srca.h = text.h;
+		SDL_Rect rect_dest;
+		rect_dest.x = dest_x;
+		rect_dest.y = dest_y;
+		rect_dest.w = dest_w;
+		rect_dest.h = dest_h;
+		if (dest_w < text.w)
+		{
+			rect_srca.x += (text.w-dest_w);
+			rect_srca.w = dest_w;
+		}
+		else if (dest_w > text.w)
+		{
+			rect_dest.x += (dest_w-text.w);
+			rect_dest.w = text.w;
+		}
+		if (dest_h < text.h)
+		{
+			rect_srca.y += (text.h-dest_h);
+			rect_srca.h = dest_h;
+		}
+		else if (dest_h > text.h)
+		{
+			rect_dest.y += (dest_h-text.h);
 			rect_dest.h = text.h;
 		}
 		SDL_SetRenderTarget(renderer, texture);

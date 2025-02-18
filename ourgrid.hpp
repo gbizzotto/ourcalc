@@ -31,8 +31,9 @@ struct CellData
 	std::string type;
 	Text display;
 	bool error = false;
-	std::set<std::pair<unsigned int,unsigned int>> dependencies = std::set<std::pair<unsigned int,unsigned int>>();
+	horizontal_policy h_policy = horizontal_policy{horizontal_policy::alignment_t::none, horizontal_policy::sizing_t::none};
 	std::string error_msg = std::string("");
+	std::set<std::pair<unsigned int,unsigned int>> dependencies = std::set<std::pair<unsigned int,unsigned int>>();
 	std::vector<std::pair<unsigned int, unsigned int>> dependent_cells = {};
 
 	bool do_dependencies_depend_on_us(decltype(dependencies) deps, unsigned int col, unsigned int row);
@@ -62,6 +63,7 @@ struct CellData
 		if (it != std::end(dependent_cells) && *it == p)
 			dependent_cells.erase(it);
 	}
+	horizontal_policy::alignment_t get_horizontal_alignment() const;
 };
 
 template<typename T>
@@ -292,7 +294,7 @@ struct Grid : T::Widget
 			if (does_col_have_selection(i))
 				this->drawable_area.fill_rect(x, 0, thickness-1, header_cols_height-1, selected_cells_overlay.r, selected_cells_overlay.g, selected_cells_overlay.b, selected_cells_overlay.a);
 
-			this->drawable_area.copy_from_text_to_rect(header_captions_cols[i], x, 0, thickness, header_cols_height);
+			this->drawable_area.copy_from_text_to_rect_center(header_captions_cols[i], x, 0, thickness, header_cols_height);
 
 			if (x > draw_width)
 				break;
@@ -313,7 +315,7 @@ struct Grid : T::Widget
 			if (does_row_have_selection(i))
 				this->drawable_area.fill_rect(0, y, header_rows_width-1, thickness-1, selected_cells_overlay.r, selected_cells_overlay.g, selected_cells_overlay.b, selected_cells_overlay.a);
 
-			this->drawable_area.copy_from_text_to_rect(header_captions_rows[i], 0, y, header_rows_width, thickness);
+			this->drawable_area.copy_from_text_to_rect_center(header_captions_rows[i], 0, y, header_rows_width, thickness);
 
 			if (y > draw_height)
 				break;
@@ -340,9 +342,13 @@ struct Grid : T::Widget
 				if (cell_data[row_idx][col_idx].formula.length() > 0)
 				{
 					if (cell_data[row_idx][col_idx].error)
-						this->drawable_area.copy_from_text_to_rect(error_display, x, y, thickness_col-1, thickness_row-1);
-					else
-						this->drawable_area.copy_from_text_to_rect(cell_data[row_idx][col_idx].display, x, y, thickness_col-1, thickness_row-1);
+						this->drawable_area.copy_from_text_to_rect_center(error_display, x, y, thickness_col-1, thickness_row-1);
+					else if (cell_data[row_idx][col_idx].get_horizontal_alignment() == horizontal_policy::alignment_t::center)
+						this->drawable_area.copy_from_text_to_rect_center(cell_data[row_idx][col_idx].display, x, y, thickness_col-1, thickness_row-1);
+					else if (cell_data[row_idx][col_idx].get_horizontal_alignment() == horizontal_policy::alignment_t::left)
+						this->drawable_area.copy_from_text_to_rect_left(cell_data[row_idx][col_idx].display, x, y, thickness_col-1, thickness_row-1);
+					else if (cell_data[row_idx][col_idx].get_horizontal_alignment() == horizontal_policy::alignment_t::right)
+						this->drawable_area.copy_from_text_to_rect_right(cell_data[row_idx][col_idx].display, x, y, thickness_col-1, thickness_row-1);
 				}
 
 				if (active_cell.first == col_idx && active_cell.second == row_idx)
@@ -423,6 +429,62 @@ struct Grid : T::Widget
 			++result;
 		}
 		return result;
+	}
+
+	bool type_is_text(const std::string & type)
+	{
+		return type == "str";
+	}
+	bool type_is_number(const std::string & type)
+	{
+		return false
+			|| type == "int"
+			|| type == "float"
+			|| type == "complex"
+			;
+	}
+	bool type_is_date(const std::string & type)
+	{
+		return false
+			;
+	}
+	bool type_is_bool(const std::string & type)
+	{
+		return type == "bool";
+	}
+	bool type_is_list(const std::string & type)
+	{
+		return false
+			|| type == "list"
+			|| type == "tuple"
+			|| type == "set"
+			|| type == "dict"
+			|| type == "range"
+			|| type == "frozenset"
+			;
+	}
+	bool type_is_binary(const std::string & type)
+	{
+		return false
+			|| type == "bytes"
+			|| type == "bytearray"
+			|| type == "memoryview"
+			;
+	}
+	horizontal_policy::alignment_t get_horizontal_alignment(const std::string & type)
+	{
+		// TODO: make it a configuration file
+		if (type_is_text(type))
+			return horizontal_policy::alignment_t::left;
+		if (type_is_number(type))
+			return horizontal_policy::alignment_t::right;
+		if (type_is_date(type))
+			return horizontal_policy::alignment_t::center;
+		if (type_is_bool(type))
+			return horizontal_policy::alignment_t::center;
+		if (type_is_binary(type))
+			return horizontal_policy::alignment_t::left;
+		return horizontal_policy::alignment_t::center
 	}
 
 	void clear_selection()
@@ -1177,4 +1239,11 @@ bool CellData::do_dependencies_depend_on_us(decltype(dependencies) deps, unsigne
 			return true;
 	}
 	return false;
+}
+
+horizontal_policy::alignment_t CellData::get_horizontal_alignment() const
+{
+	if (h_policy.alignment != horizontal_policy::alignment_t::none)
+		return h_policy.alignment;
+	return global_grid->get_horizontal_alignment(type);
 }
