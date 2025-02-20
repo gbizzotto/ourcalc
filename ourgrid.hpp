@@ -39,16 +39,7 @@ struct CellData
 	bool do_dependencies_depend_on_us(decltype(dependencies) deps, unsigned int col, unsigned int row);
 	void clear_dependencies(unsigned int col, unsigned int row);
 	bool reevaluate(int col, int row);
-	bool set_formula(icu::UnicodeString contents, int col, int row)
-	{
-		if (formula == contents)
-			return false;
-
-		clear_dependencies(col, row);
-
-		formula = contents;
-		return reevaluate(col, row);
-	}
+	bool set_formula(icu::UnicodeString contents, int col, int row);
 	void add_dependent(unsigned int col, unsigned int row)
 	{
 		auto p = std::make_pair(col, row);
@@ -484,7 +475,7 @@ struct Grid : T::Widget
 			return horizontal_policy::alignment_t::center;
 		if (type_is_binary(type))
 			return horizontal_policy::alignment_t::left;
-		return horizontal_policy::alignment_t::center
+		return horizontal_policy::alignment_t::center;
 	}
 
 	void clear_selection()
@@ -1088,6 +1079,26 @@ std::vector<std::string> split(const std::string& s, const std::string& delimite
 	return result;
 }
 
+bool CellData::set_formula(icu::UnicodeString contents, int col, int row)
+{
+	if (formula == contents)
+		return false;
+
+	clear_dependencies(col, row);
+
+	formula = contents;
+	bool display_changed = reevaluate(col, row);
+
+	// update dependent cells
+	for (const auto & p : dependent_cells)
+	{
+		auto * cell = global_grid->get_cell_at(p.first, p.second);
+		cell->reevaluate(p.first, p.second);
+	}
+
+	return display_changed;
+}
+
 bool CellData::reevaluate(int col, int row)
 {
 	bool display_changed;
@@ -1186,13 +1197,6 @@ bool CellData::reevaluate(int col, int row)
 			type = calculated_type;
 			display_changed = there_was_en_error;
 			display_changed |= display.set_text(calculated_text);
-
-			// update dependent cells
-			for (const auto & p : dependent_cells)
-			{
-				auto * cell = global_grid->get_cell_at(p.first, p.second);
-				cell->reevaluate(p.first, p.second);
-			}
 		}
 	}
 	catch(std::exception & e)
