@@ -4,9 +4,10 @@ from datetime import *
 import operator
 
 class ourcell:
+    """As per https://stackoverflow.com/a/68932800/231306"""
     def __init__(self,val):
         object.__setattr__(self, '_proxied', val)
-    def coords(self,col,row):
+    def coords(self,col,row): # should we hide this from cell formulas?
         object.__setattr__(self, 'col', col)
         object.__setattr__(self, 'row', row)
         return self
@@ -33,14 +34,11 @@ class ourcell:
     def __hash__(self):
         return object.__getattribute__(self, '_proxied').__hash__()
     def __getitem__(self, key):
-        p = object.__getattribute__(self, '_proxied')
-        return p[key]            
-    def __setitem__(self, key, value):
-        p = object.__getattribute__(self, '_proxied')
-        p[key] = value            
-    def __delitem__(self, key):
-        p = object.__getattribute__(self, '_proxied')
-        del p[key]
+        return object.__getattribute__(self, '_proxied').__getitem__(key)
+    def __setitem__(self, key, value): # Should we return an altered copy of self?
+        object.__getattribute__(self, '_proxied').__setitem__(key, value)
+    def __delitem__(self, key): # Should we return an altered copy of self?
+        object.__getattribute__(self, '_proxied').__delitem__(key)
     def __add__(self, o):
         return object.__getattribute__(self, '_proxied').__add__(o)
     def __radd__(self, o):
@@ -176,5 +174,7 @@ def is_ourcell(c):
 
 
 def TODAY():
+    return datetime.today().date()
+def NOW():
     return datetime.today()
 
