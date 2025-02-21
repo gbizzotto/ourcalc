@@ -282,7 +282,8 @@ struct Grid : T::Widget
 
 			// dark rectangle
 			this->drawable_area.fill_rect(x, 0, thickness-1, header_cols_height-1, color_bg_header.r, color_bg_header.g, color_bg_header.b);
-			if (does_col_have_selection(i))
+			bool col_has_selected_cells = does_col_have_selection(i);
+			if (col_has_selected_cells || (!col_has_selected_cells && active_cell.first == i))
 				this->drawable_area.fill_rect(x, 0, thickness-1, header_cols_height-1, selected_cells_overlay.r, selected_cells_overlay.g, selected_cells_overlay.b, selected_cells_overlay.a);
 
 			this->drawable_area.copy_from_text_to_rect_center(header_captions_cols[i], x, 0, thickness, header_cols_height);
@@ -303,7 +304,8 @@ struct Grid : T::Widget
 
 			// dark rectangle
 			this->drawable_area.fill_rect(0, y, header_rows_width-1, thickness-1, color_bg_header.r, color_bg_header.g, color_bg_header.b);
-			if (does_row_have_selection(i))
+			bool row_has_selected_cells = does_row_have_selection(i);
+			if (row_has_selected_cells || (!row_has_selected_cells && active_cell.second == i))
 				this->drawable_area.fill_rect(0, y, header_rows_width-1, thickness-1, selected_cells_overlay.r, selected_cells_overlay.g, selected_cells_overlay.b, selected_cells_overlay.a);
 
 			this->drawable_area.copy_from_text_to_rect_center(header_captions_rows[i], 0, y, header_rows_width, thickness);
@@ -676,6 +678,13 @@ struct Grid : T::Widget
 		}
 	}
 
+	bool has_no_selection() const
+	{
+		return selected_cols.size() == 0
+		    && selected_rows.size() == 0
+		    && selected_cells.size() == 0;
+	}
+
 	unsigned int get_col_count() const
 	{
 		return thickness_cols.size();
@@ -715,6 +724,7 @@ struct Grid : T::Widget
 				int col_idx = get_col_at(ev.data.mouse.x);
 				int row_idx = get_row_at(ev.data.mouse.y);
 
+				auto old_active_cell = active_cell;
 				set_active_cell(std::max(0,col_idx),std::max(0,row_idx));
 
 				this->take_focus();
@@ -904,6 +914,10 @@ struct Grid : T::Widget
 					}
 					else
 					{
+						if (active_cell != old_active_cell && has_no_selection())
+						{
+							toggle_selected_cell(old_active_cell.first, old_active_cell.second);
+						}
 						changed |= true;
 						toggle_selected_cell(col_idx, row_idx);
 					}
