@@ -15,8 +15,7 @@ class ourcell:
         try:
             return object.__getattribute__(self, name)
         except AttributeError:
-            p = object.__getattribute__(self, '_proxied')
-            return getattr(p, name)
+            return object.__getattribute__(self, '_proxied').getattr(p, name)
     def __setattr__(self, name, value):
         p = object.__getattribute__(self, '_proxied')
         if hasattr(p, name):
@@ -37,140 +36,150 @@ class ourcell:
         return object.__getattribute__(self, '_proxied').__getitem__(key)
     def __setitem__(self, key, value): # Should we return an altered copy of self?
         object.__getattribute__(self, '_proxied').__setitem__(key, value)
-    def __delitem__(self, key): # Should we return an altered copy of self?
+    def __delitem__(self, key):        # Should we return an altered copy of self?
         object.__getattribute__(self, '_proxied').__delitem__(key)
     def __add__(self, o):
-        return object.__getattribute__(self, '_proxied').__add__(o)
+        return object.__getattribute__(self, '_proxied') + o
     def __radd__(self, o):
-        return object.__getattribute__(self, '_proxied').__radd__(o)
+        return o + object.__getattribute__(self, '_proxied')
     def __sub__(self, o):
-        return object.__getattribute__(self, '_proxied').__sub__(o)
+        return object.__getattribute__(self, '_proxied') - o
     def __rsub__(self, o):
-        return object.__getattribute__(self, '_proxied').__rsub__(o)
+        return o - object.__getattribute__(self, '_proxied')
     def __mul__(self, o):
-        return object.__getattribute__(self, '_proxied').__mul__(o)
+        return object.__getattribute__(self, '_proxied') * o
     def __rmul__(self, o):
-        return object.__getattribute__(self, '_proxied').__rmul__(o)
+        return o * object.__getattribute__(self, '_proxied')
     def __truediv__(self, o):
-        return object.__getattribute__(self, '_proxied').__truediv__(o)
+        return object.__getattribute__(self, '_proxied') / o
     def __rtruediv__(self, o):
-        return object.__getattribute__(self, '_proxied').__rtruediv__(o)
+        return o / object.__getattribute__(self, '_proxied')
     def __floordiv__(self, o):
-        return object.__getattribute__(self, '_proxied').__floordiv__(o)
+        return object.__getattribute__(self, '_proxied') // o
     def __rfloordiv__(self, o):
-        return object.__getattribute__(self, '_proxied').__rfloordiv__(o)
+        return o // object.__getattribute__(self, '_proxied')
     def __mod__(self, o):
-        return object.__getattribute__(self, '_proxied').__mod__(o)
+        return object.__getattribute__(self, '_proxied') % o
     def __rmod__(self, o):
-        return object.__getattribute__(self, '_proxied').__rmod__(o)
+        return o % object.__getattribute__(self, '_proxied')
     def __pow__(self, o):
-        return object.__getattribute__(self, '_proxied').__pow__(o)
+        return object.__getattribute__(self, '_proxied') ** o
     def __rpow__(self, o):
-        return object.__getattribute__(self, '_proxied').__rpow__(o)
+        return o ** object.__getattribute__(self, '_proxied')
     def __rshift__(self, o):
-        return object.__getattribute__(self, '_proxied').__rshift__(o)
+        return object.__getattribute__(self, '_proxied') >> o
     def __rrshift__(self, o):
-        return object.__getattribute__(self, '_proxied').__rrshift__(o)
+        return o >> object.__getattribute__(self, '_proxied')
     def __lshift__(self, o):
-        return object.__getattribute__(self, '_proxied').__lshift__(o)
+        return object.__getattribute__(self, '_proxied') << o
     def __rlshift__(self, o):
-        return object.__getattribute__(self, '_proxied').__rlshift__(o)
+        return o << object.__getattribute__(self, '_proxied')
     def __and__(self, o):
-        return object.__getattribute__(self, '_proxied').__and__(o)
+        return object.__getattribute__(self, '_proxied') & o
     def __rand__(self, o):
-        return object.__getattribute__(self, '_proxied').__rand__(o)
+        return o & object.__getattribute__(self, '_proxied')
     def __or__(self, o):
-        return object.__getattribute__(self, '_proxied').__or__(o)
+        return object.__getattribute__(self, '_proxied') | o
     def __ror__(self, o):
-        return object.__getattribute__(self, '_proxied').__ror__(o)
+        return o | object.__getattribute__(self, '_proxied')
     def __xor__(self, o):
-        return object.__getattribute__(self, '_proxied').__xor__(o)
+        return object.__getattribute__(self, '_proxied') ^ o
     def __rxor__(self, o):
-        return object.__getattribute__(self, '_proxied').__rxor__(o)
+        return o ^ object.__getattribute__(self, '_proxied')
     def __lt__(self, o):
-        return object.__getattribute__(self, '_proxied').__lt__(o)
+        return object.__getattribute__(self, '_proxied') < o
     def __rlt__(self, o):
-        return object.__getattribute__(self, '_proxied').__rlt__(o)
+        return o < object.__getattribute__(self, '_proxied')
     def __gt__(self, o):
-        return object.__getattribute__(self, '_proxied').__gt__(o)
+        return object.__getattribute__(self, '_proxied') > o
     def __rgt__(self, o):
-        return object.__getattribute__(self, '_proxied').__rgt__(o)
+        return o > object.__getattribute__(self, '_proxied')
     def __le__(self, o):
-        return object.__getattribute__(self, '_proxied').__le__(o)
+        return object.__getattribute__(self, '_proxied') <= o
     def __rle__(self, o):
-        return object.__getattribute__(self, '_proxied').__rle__(o)
+        return o <= object.__getattribute__(self, '_proxied')
     def __ge__(self, o):
-        return object.__getattribute__(self, '_proxied').__ge__(o)
+        return object.__getattribute__(self, '_proxied') >= o
     def __rge__(self, o):
-        return object.__getattribute__(self, '_proxied').__rge__(o)
+        return o >= object.__getattribute__(self, '_proxied')
     def __eq__(self, o):
-        return object.__getattribute__(self, '_proxied').__eq__(o)
+        return object.__getattribute__(self, '_proxied') == o
     def __req__(self, o):
-        return object.__getattribute__(self, '_proxied').__req__(o)
+        return o == object.__getattribute__(self, '_proxied')
     def __ne__(self, o):
-        return object.__getattribute__(self, '_proxied').__ne__(o)
+        return object.__getattribute__(self, '_proxied') != o
     def __rne__(self, o):
-        return object.__getattribute__(self, '_proxied').__rne__(o)
+        return o != object.__getattribute__(self, '_proxied')
     def __isub__(self, o):
-        return object.__getattribute__(self, '_proxied').__isub__(o)
+        x = object.__getattribute__(self, '_proxied')
+        x -= o
     def __risub__(self, o):
-        return object.__getattribute__(self, '_proxied').__risub__(o)
+        o -= object.__getattribute__(self, '_proxied')
     def __iadd__(self, o):
-        return object.__getattribute__(self, '_proxied').__iadd__(o)
+        x = object.__getattribute__(self, '_proxied')
+        x += o
     def __riadd__(self, o):
-        return object.__getattribute__(self, '_proxied').__riadd__(o)
+        o += object.__getattribute__(self, '_proxied')
     def __imul__(self, o):
-        return object.__getattribute__(self, '_proxied').__imul__(o)
+        x = object.__getattribute__(self, '_proxied')
+        x *= o
     def __rimul__(self, o):
-        return object.__getattribute__(self, '_proxied').__rimul__(o)
+        o *= object.__getattribute__(self, '_proxied')
     def __idiv__(self, o):
-        return object.__getattribute__(self, '_proxied').__idiv__(o)
+        x = object.__getattribute__(self, '_proxied')
+        x /= o
     def __ridiv__(self, o):
-        return object.__getattribute__(self, '_proxied').__ridiv__(o)
+        o /= object.__getattribute__(self, '_proxied')
     def __imod__(self, o):
-        return object.__getattribute__(self, '_proxied').__imod__(o)
+        x = object.__getattribute__(self, '_proxied')
+        x %= o
     def __rimod__(self, o):
-        return object.__getattribute__(self, '_proxied').__rimod__(o)
+        o %= object.__getattribute__(self, '_proxied')
     def __ipow__(self, o):
-        return object.__getattribute__(self, '_proxied').__ipow__(o)
+        x = object.__getattribute__(self, '_proxied')
+        x **= o
     def __ripow__(self, o):
-        return object.__getattribute__(self, '_proxied').__ripow__(o)
+        o **= object.__getattribute__(self, '_proxied')
     def __irshift__(self, o):
-        return object.__getattribute__(self, '_proxied').__irshift__(o)
+        x = object.__getattribute__(self, '_proxied')
+        x >>= o
     def __rirshift__(self, o):
-        return object.__getattribute__(self, '_proxied').__rirshift__(o)
+        o >>= object.__getattribute__(self, '_proxied')
     def __ilshift__(self, o):
-        return object.__getattribute__(self, '_proxied').__ilshift__(o)
+        x = object.__getattribute__(self, '_proxied')
+        x <<= o
     def __rilshift__(self, o):
-        return object.__getattribute__(self, '_proxied').__rilshift__(o)
+        o <<= object.__getattribute__(self, '_proxied')
     def __iand__(self, o):
-        return object.__getattribute__(self, '_proxied').__iand__(o)
+        x = object.__getattribute__(self, '_proxied')
+        x &= o
     def __riand__(self, o):
-        return object.__getattribute__(self, '_proxied').__riand__(o)
+        o &= object.__getattribute__(self, '_proxied')
     def __ior__(self, o):
-        return object.__getattribute__(self, '_proxied').__ior__(o)
+        x = object.__getattribute__(self, '_proxied')
+        x |= o
     def __rior__(self, o):
-        return object.__getattribute__(self, '_proxied').__rior__(o)
+        o |= object.__getattribute__(self, '_proxied')
     def __ixor__(self, o):
-        return object.__getattribute__(self, '_proxied').__ixor__(o)
+        x = object.__getattribute__(self, '_proxied')
+        x ^= o
     def __rixor__(self, o):
-        return object.__getattribute__(self, '_proxied').__rixor__(o)
+        o ^= object.__getattribute__(self, '_proxied')
     def __neg__(self):
-        return object.__getattribute__(self, '_proxied').__neg__()
-    def __rfloordiv__(self):
-        return object.__getattribute__(self, '_proxied').__pos__()
+        return - object.__getattribute__(self, '_proxied')
+    def __pos__(self):
+        return + object.__getattribute__(self, '_proxied')
     def __invert__(self):
-        return object.__getattribute__(self, '_proxied').__invert__()
+        return ~ object.__getattribute__(self, '_proxied')
 
 def make_ourcell(val,col,row): #will work for any object you feed it, but only that object
     if isinstance(val, ourcell):
-    	return deepcopy(val).coords(col,row)
+        return deepcopy(val).coords(col,row)
     else:
-    	return ourcell(val).coords(col,row)
+        return ourcell(val).coords(col,row)
 
 def is_ourcell(c):
-    return c.__class__.__name__ == 'ourcell' or c.__class__.__name__ == 'ourboolcell'
-
+    return isinstance(c, ourcell)
 
 
 def TODAY():
