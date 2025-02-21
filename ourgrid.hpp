@@ -60,44 +60,51 @@ struct CellData
 template<typename T>
 struct Grid : T::Widget
 {
-	inline static const color_t color_cell_bg          = color_t(255);
-	inline static const color_t color_text_header      = color_t(32);
-	inline static const color_t color_lines            = color_t(160);
-	inline static const color_t color_bg_header        = color_t(210);
-	inline static const color_t selected_cells_overlay = color_t(128,200,128,96);
-	inline static const color_t color_active_cell      = color_t(0);
+	inline static const color_t color_cell_bg                 = color_t(255);
+	inline static const color_t color_text_header             = color_t(32);
+	inline static const color_t color_lines                   = color_t(160);
+	inline static const color_t color_bg_header               = color_t(210);
+	inline static const color_t selected_cells_overlay        = color_t(128,200,128,96);
+	inline static const color_t color_active_cell             = color_t(0);
+	inline static const color_t color_edit_mode_selected_cell = color_t(64,192,64,255);
 	inline static const int header_resizing_area_thickness = 2;
 
+	// basics
 	Window * parent_window;
 	T::TextEdit & editor;
 
-	std::pair<unsigned int, unsigned int> active_cell;
-
+	// cells
 	std::vector<std::vector<CellData>> cell_data;
+	const Text error_display;
 
+	// headers
 	unsigned int header_cols_height = 18;
 	unsigned int header_rows_width = 40;
-
 	std::vector<unsigned int> thickness_cols;
 	std::vector<unsigned int> thickness_rows;
+	std::deque<Text> header_captions_cols;
+	std::deque<Text> header_captions_rows;
 
-	std::set<unsigned int>   selected_cols;
-	std::set<unsigned int>   selected_rows;
-	std::set<unsigned int> unselected_cols;
-	std::set<unsigned int> unselected_rows;
+	// selection stuff
+	std::set<unsigned int>                           selected_cols;
+	std::set<unsigned int>                           selected_rows;
+	std::set<unsigned int>                         unselected_cols;
+	std::set<unsigned int>                         unselected_rows;
 	std::set<std::pair<unsigned int,unsigned int>>   selected_cells;
 	std::set<std::pair<unsigned int,unsigned int>> unselected_cells;
 	bool selected_all = false;		
 
-	std::deque<Text> header_captions_cols;
-	std::deque<Text> header_captions_rows;
-
+	// grid status
 	bool key_ctrl = false;
+	bool edit_mode = false;
+	bool edit_mode_select_cell = false;
+	int insert_or_replace_cell_name_idx = -1;
+	int insert_or_replace_cell_name_len = 0;
+	std::pair<unsigned int, unsigned int> active_cell;
+	std::pair<unsigned int, unsigned int> edit_mode_selected_cell;
 
+	// python interpreter
 	py::scoped_interpreter guard;
-
-	Text error_display;
-
 	py::dict globals;
 	py::dict locals;
 
@@ -105,8 +112,8 @@ struct Grid : T::Widget
 		: T::Widget(window, {0,0,200,200})
 		, parent_window(window)
 		, editor(edit)
-		, active_cell{std::numeric_limits<unsigned int>::max(),std::numeric_limits<unsigned int>::max()}
 		, error_display(std::string("Error"), window, 255,0,0,255)
+		, active_cell{std::numeric_limits<unsigned int>::max(),std::numeric_limits<unsigned int>::max()}
 	{
 		this->border_width = 0;
 		this->border_padding = 0;
@@ -181,7 +188,7 @@ struct Grid : T::Widget
 			for (unsigned int col_number=before_idx,i=0 ; i<count ; ++i,++col_number)
 				code.append(column_name_from_int(col_number))
 				    .append(std::to_string(row_number))
-				    .append("=make_ourcell('',")
+				    .append("=make_ourcell(None,")
 				    .append(std::to_string(col_number))
 				    .append(",")
 				    .append(std::to_string(row_number))
@@ -209,7 +216,7 @@ struct Grid : T::Widget
 			for (unsigned int row_number=before_idx,i=0 ; i<count ; ++i,++row_number)
 				code.append(column_name_from_int(col_number))
 				    .append(std::to_string(row_number))
-				    .append("=make_ourcell('',")
+				    .append("=make_ourcell(None,")
 				    .append(std::to_string(col_number))
 				    .append(",")
 				    .append(std::to_string(row_number))
@@ -348,6 +355,10 @@ struct Grid : T::Widget
 				{
 					this->drawable_area.draw_rect(x, y, thickness_col-1, thickness_row-1, color_active_cell.r, color_active_cell.g, color_active_cell.b, color_active_cell.a);
 					//this->drawable_area.draw_rect(x-1, y-1, thickness_col+1, thickness_row+1, color_active_cell.r, color_active_cell.g, color_active_cell.b, color_active_cell.a);
+				}
+				else if (edit_mode && edit_mode_select_cell && edit_mode_selected_cell.first == col_idx && edit_mode_selected_cell.second == row_idx)
+				{
+					this->drawable_area.draw_rect(x, y, thickness_col-1, thickness_row-1, color_active_cell.r, color_edit_mode_selected_cell.g, color_edit_mode_selected_cell.b, color_edit_mode_selected_cell.a);
 				}
 
 				if (x > draw_width)
@@ -668,11 +679,11 @@ struct Grid : T::Widget
 
 	void set_active_cell(unsigned int col_idx, unsigned int row_idx)
 	{
+		set_formula_at(active_cell.first, active_cell.second, editor.get_text());
+
 		auto p = std::make_pair(col_idx, row_idx);
 		if (active_cell != p)
 		{
-			set_formula_at(active_cell.first, active_cell.second, editor.get_text());
-
 			editor.set_text(get_formula_at(col_idx, row_idx));
 			active_cell = p;
 		}
@@ -692,6 +703,30 @@ struct Grid : T::Widget
 	unsigned int get_row_count() const
 	{
 		return thickness_rows.size();
+	}
+
+	icu::UnicodeString get_cell_name(unsigned col_idx, unsigned row_idx)
+	{
+		return icu::UnicodeString::fromUTF8(column_name_from_int(col_idx).append(std::to_string(row_idx)));
+	}
+
+	void insert_or_replace_cell_name(unsigned col_idx, unsigned row_idx)
+	{
+		// TODO: use selection instead?
+		auto cell_name = get_cell_name(col_idx, row_idx);
+		if (insert_or_replace_cell_name_idx == -1)
+		{
+			// insert
+			insert_or_replace_cell_name_idx = editor.get_text_length();
+			insert_or_replace_cell_name_len = cell_name.length();
+			editor.insert(cell_name);
+		}
+		else
+		{
+			assert(editor.get_text_length() >= insert_or_replace_cell_name_idx);
+			editor.replace(insert_or_replace_cell_name_idx, insert_or_replace_cell_name_len, cell_name);
+			insert_or_replace_cell_name_len = cell_name.length();
+		}
 	}
 
 	virtual bool handle_event(event & ev) override
@@ -723,6 +758,16 @@ struct Grid : T::Widget
 
 				int col_idx = get_col_at(ev.data.mouse.x);
 				int row_idx = get_row_at(ev.data.mouse.y);
+
+				if (edit_mode)
+				{
+					edit_mode_select_cell = true;
+					edit_mode_selected_cell.first = col_idx;
+					edit_mode_selected_cell.second = row_idx;
+					insert_or_replace_cell_name(col_idx, row_idx);
+					this->set_needs_redraw();
+					break;
+				}
 
 				auto old_active_cell = active_cell;
 				set_active_cell(std::max(0,col_idx),std::max(0,row_idx));
@@ -939,25 +984,155 @@ struct Grid : T::Widget
 				switch (ev.data.key.keycode)
 				{
 					case Scancode::Up:
-						if (active_cell.second != 0)
-							set_active_cell(active_cell.first, active_cell.second - 1);
-						changed |= true;
+						if (edit_mode)
+						{
+							changed |= !edit_mode_select_cell;
+							edit_mode_select_cell = true;
+							if (edit_mode_selected_cell.second != 0)
+							{
+								--edit_mode_selected_cell.second;
+								changed |= true;
+							}
+							insert_or_replace_cell_name(edit_mode_selected_cell.first, edit_mode_selected_cell.second);
+						}
+						else
+						{
+							if (active_cell.second != 0)
+								set_active_cell(active_cell.first, active_cell.second - 1);
+							changed |= true;
+						}
 						break;
 					case Scancode::Down:
-					case Scancode::Enter:
-						if (active_cell.second < get_row_count()-1)
-							set_active_cell(active_cell.first, active_cell.second + 1);
-						changed |= true;
+						if (edit_mode)
+						{
+							changed |= !edit_mode_select_cell;
+							edit_mode_select_cell = true;
+							if (edit_mode_selected_cell.second < get_row_count()-1)
+							{
+								++edit_mode_selected_cell.second;
+								changed |= true;
+							}
+							insert_or_replace_cell_name(edit_mode_selected_cell.first, edit_mode_selected_cell.second);
+						}
+						else
+						{
+							if (active_cell.second < get_row_count()-1)
+							{
+								set_active_cell(active_cell.first, active_cell.second + 1);
+								changed |= true;
+							}
+						}
 						break;
 					case Scancode::Left:
-						if (active_cell.first != 0)
-							set_active_cell(active_cell.first - 1, active_cell.second);
-						changed |= true;
+						if (edit_mode)
+						{
+							changed |= !edit_mode_select_cell;
+							edit_mode_select_cell = true;
+							if (edit_mode_selected_cell.first > 0)
+							{
+								--edit_mode_selected_cell.first;
+								changed |= true;
+							}
+							insert_or_replace_cell_name(edit_mode_selected_cell.first, edit_mode_selected_cell.second);
+						}
+						else
+						{
+							if (active_cell.first != 0)
+								set_active_cell(active_cell.first - 1, active_cell.second);
+							changed |= true;
+						}
 						break;
 					case Scancode::Right:
-						if (active_cell.first < get_col_count()-1)
-							set_active_cell(active_cell.first + 1, active_cell.second);
-						changed |= true;
+						if (edit_mode)
+						{
+							changed |= !edit_mode_select_cell;
+							edit_mode_select_cell = true;
+							if (edit_mode_selected_cell.first < get_row_count()-1)
+							{
+								++edit_mode_selected_cell.first;
+								changed |= true;
+							}
+							insert_or_replace_cell_name(edit_mode_selected_cell.first, edit_mode_selected_cell.second);
+						}
+						else
+						{
+							if (active_cell.first < get_col_count()-1)
+								set_active_cell(active_cell.first + 1, active_cell.second);
+							changed |= true;
+						}
+						break;
+					case Scancode::Enter:
+						if (edit_mode)
+						{
+							if (edit_mode_selected_cell != active_cell)
+							{
+								//editor.insert(get_cell_name(edit_mode_selected_cell.first, edit_mode_selected_cell.second));
+								edit_mode_selected_cell = active_cell;
+								insert_or_replace_cell_name_idx = -1;
+								insert_or_replace_cell_name_len = -1;
+								changed |= true;
+							}
+							else
+							{
+								set_active_cell(active_cell.first, active_cell.second + 1);
+								changed |= true;
+								edit_mode_select_cell = false;
+								edit_mode = false;
+							}
+						}
+						else
+						{
+							if (active_cell.second < get_row_count()-1)
+							{
+								set_active_cell(active_cell.first, active_cell.second + 1);
+								changed |= true;
+							}
+						}
+						break;
+					case Scancode::F2:						
+						edit_mode = false;
+						editor.take_focus();
+						break;
+					case Scancode::Delete:
+						if (edit_mode)
+						{
+							if (edit_mode_select_cell)
+							{
+								edit_mode_select_cell = false;
+								edit_mode_selected_cell = active_cell;
+								insert_or_replace_cell_name_idx = -1;
+								insert_or_replace_cell_name_len = -1;
+								changed |= true;
+							}
+							editor.handle_event(ev);
+						}
+						else
+						{
+							editor.clear();
+							set_formula_at(active_cell.first, active_cell.second, "");
+							changed |= true;
+						}
+						break;
+					case Scancode::Backspace:
+						if (edit_mode)
+						{
+							if (edit_mode_select_cell)
+							{
+								edit_mode_select_cell = false;
+								edit_mode_selected_cell = active_cell;
+								insert_or_replace_cell_name_idx = -1;
+								insert_or_replace_cell_name_len = -1;
+								changed |= true;
+							}
+							editor.handle_event(ev);
+						}
+						else
+						{
+							editor.clear();
+							edit_mode = true;
+							edit_mode_selected_cell = active_cell;
+							changed |= true;
+						}
 						break;
 					default:
 						editor.handle_event(ev);
@@ -967,6 +1142,23 @@ struct Grid : T::Widget
 				return changed;
 			}
 			case text:
+				if ( ! edit_mode)
+				{
+					editor.clear();
+					edit_mode = true;
+					edit_mode_selected_cell = active_cell;
+				}
+				else
+				{
+					if (edit_mode_select_cell)
+					{
+						edit_mode_select_cell = false;
+						edit_mode_selected_cell = active_cell;
+						insert_or_replace_cell_name_idx = -1;
+						insert_or_replace_cell_name_len = -1;
+						this->set_needs_redraw();
+					}
+				}
 				editor.handle_event(ev);
 				break;
 			default:
@@ -1041,7 +1233,17 @@ _colname__row_ = make_ourcell(result, _col_, _row_)
 
 ourcalc_display_text = str(result)
 ourcalc_display_type = result.__class__.__name__
+)";
 
+	code.findAndReplace("_col_", icu::UnicodeString::fromUTF8(std::to_string(col)));
+	code.findAndReplace("_row_", icu::UnicodeString::fromUTF8(std::to_string(row)));
+	code.findAndReplace("_colname_"  , icu::UnicodeString::fromUTF8(column_name_from_int(col)));	
+	code.findAndReplace("_formula_"  , formula.tempSubString(1));
+	return code;
+}
+icu::UnicodeString get_parse_python_code(icu::UnicodeString & formula)
+{
+	icu::UnicodeString code = R"(
 import ast
 code = '_formula_'
 root = ast.parse(code)
@@ -1054,9 +1256,9 @@ for node in root:
 ourcalc_variables = ','.join(var_set)
 )";
 
-	code.findAndReplace("_col_", icu::UnicodeString::fromUTF8(std::to_string(col)));
-	code.findAndReplace("_row_", icu::UnicodeString::fromUTF8(std::to_string(row)));
-	code.findAndReplace("_colname_"  , icu::UnicodeString::fromUTF8(column_name_from_int(col)));	
+	//code.findAndReplace("_col_", icu::UnicodeString::fromUTF8(std::to_string(col)));
+	//code.findAndReplace("_row_", icu::UnicodeString::fromUTF8(std::to_string(row)));
+	//code.findAndReplace("_colname_"  , icu::UnicodeString::fromUTF8(column_name_from_int(col)));	
 	code.findAndReplace("_formula_"  , formula.tempSubString(1));
 	return code;
 }
@@ -1155,17 +1357,19 @@ bool CellData::reevaluate(int col, int row)
 	//std::cout << formula << std::endl;
 	//std::cout << formula.substr(1) << std::endl;
 	//std::cout << code << std::endl;
-	auto code = get_formula_python_code(formula, col, row);
-	std::string utf8_code;
-	code.toUTF8String(utf8_code);
-	//std::cout << utf8_code << std::endl;
+	auto formula_code = get_formula_python_code(formula, col, row);
+	auto  parser_code = get_parse_python_code(formula);
+	std::string utf8_formula_code;
+	std::string utf8_parser_code;
+	formula_code.toUTF8String(utf8_formula_code);
+	 parser_code.toUTF8String(utf8_parser_code);
+	//std::cout << utf8_formula_code << std::endl;
 	try
 	{
-		py::exec(utf8_code, globals, locals);
-		auto calculated_text = locals["ourcalc_display_text"].cast<std::string>();
-		auto calculated_type = locals["ourcalc_display_type"].cast<std::string>();
-		std::vector<std::string> variables = split(locals["ourcalc_variables"].cast<std::string>(), ",");
+		// First parse the code
 
+		py::exec(utf8_parser_code, globals, locals);
+		std::vector<std::string> variables = split(locals["ourcalc_variables"].cast<std::string>(), ",");
 
 		error = false;
 		// Check for dependency cells that contain error
@@ -1180,13 +1384,6 @@ bool CellData::reevaluate(int col, int row)
 				//return true;
 			}
 		}
-
-		//std::cout << "Display text: " << display_text << std::endl;
-
-		//std::cout << variables.size() << " variables in code: ";
-		//for (auto & v : variables)
-		//	std::cout << v;
-		//std::cout << std::endl;
 
 		// add dependecies cells
 		for (const std::string & v : variables)
@@ -1205,6 +1402,20 @@ bool CellData::reevaluate(int col, int row)
 			error = true;
 			error_msg = "Circula dependency";
 		}
+
+		// Now execute the code
+
+		py::exec(utf8_formula_code, globals, locals);
+		auto calculated_text = locals["ourcalc_display_text"].cast<std::string>();
+		auto calculated_type = locals["ourcalc_display_type"].cast<std::string>();
+
+
+		//std::cout << "Display text: " << display_text << std::endl;
+
+		//std::cout << variables.size() << " variables in code: ";
+		//for (auto & v : variables)
+		//	std::cout << v;
+		//std::cout << std::endl;
 
 		if ( ! error)
 		{

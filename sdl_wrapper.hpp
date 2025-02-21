@@ -27,6 +27,11 @@ enum Scancode
 	Alt,
 	Altgr,
 	Enter,
+	Esc,
+	Backspace,
+	Delete,
+	F1,
+	F2,
 };
 
 enum MouseCursorImg
@@ -384,7 +389,7 @@ struct DrawableArea
 		SDL_RenderCopy(renderer, other.texture, &other.rect_src, &rect);
 		SDL_SetRenderTarget(renderer, NULL);
 	}
-	void copy_from(Text & text, int x, int y)
+	void copy_from(const Text & text, int x, int y)
 	{
 		SDL_Rect rect;
 		rect.x = x;
@@ -395,7 +400,7 @@ struct DrawableArea
 		SDL_RenderCopy(renderer, text.message_texture, NULL, &rect);
 		SDL_SetRenderTarget(renderer, NULL);
 	}
-	void copy_from_text_to_rect_center(Text & text, int dest_x, int dest_y, int dest_w, int dest_h)
+	void copy_from_text_to_rect_center(const Text & text, int dest_x, int dest_y, int dest_w, int dest_h)
 	{
 		SDL_Rect rect_srca;
 		rect_srca.x = 0;
@@ -623,6 +628,7 @@ struct SDL
 									case SDL_WINDOWEVENT_MOVED:
 										break;
 									case SDL_WINDOWEVENT_ENTER:
+										window->handle_event(event{event_type::window_shown, 0});
 										break;
 									case SDL_WINDOWEVENT_RESIZED:
 										event my_event{event_type::window_resized, 0};
@@ -692,18 +698,25 @@ struct SDL
 						my_event.data.key.charcode = ev.keysym.sym;
 						switch (ev.keysym.scancode)
 						{
-							case SDL_SCANCODE_UP      : my_event.data.key.keycode = Scancode::Up   ; break;
-							case SDL_SCANCODE_DOWN    : my_event.data.key.keycode = Scancode::Down ; break;
-							case SDL_SCANCODE_LEFT    : my_event.data.key.keycode = Scancode::Left ; break;
-							case SDL_SCANCODE_RIGHT   : my_event.data.key.keycode = Scancode::Right; break;
-							case SDL_SCANCODE_LCTRL   : my_event.data.key.keycode = Scancode::Ctrl ; break;
-							case SDL_SCANCODE_RCTRL   : my_event.data.key.keycode = Scancode::Ctrl ; break;
-							case SDL_SCANCODE_LSHIFT  : my_event.data.key.keycode = Scancode::Shift; break;
-							case SDL_SCANCODE_RSHIFT  : my_event.data.key.keycode = Scancode::Shift; break;
-							case SDL_SCANCODE_LALT    : my_event.data.key.keycode = Scancode::Alt  ; break;
-							case SDL_SCANCODE_RALT    : my_event.data.key.keycode = Scancode::Altgr; break;
-							case SDL_SCANCODE_KP_ENTER: my_event.data.key.keycode = Scancode::Enter; break;
-							case SDL_SCANCODE_RETURN  : my_event.data.key.keycode = Scancode::Enter; break;
+							case SDL_SCANCODE_UP           : my_event.data.key.keycode = Scancode::Up        ; break;
+							case SDL_SCANCODE_DOWN         : my_event.data.key.keycode = Scancode::Down      ; break;
+							case SDL_SCANCODE_LEFT         : my_event.data.key.keycode = Scancode::Left      ; break;
+							case SDL_SCANCODE_RIGHT        : my_event.data.key.keycode = Scancode::Right     ; break;
+							case SDL_SCANCODE_LCTRL        : my_event.data.key.keycode = Scancode::Ctrl      ; break;
+							case SDL_SCANCODE_RCTRL        : my_event.data.key.keycode = Scancode::Ctrl      ; break;
+							case SDL_SCANCODE_LSHIFT       : my_event.data.key.keycode = Scancode::Shift     ; break;
+							case SDL_SCANCODE_RSHIFT       : my_event.data.key.keycode = Scancode::Shift     ; break;
+							case SDL_SCANCODE_LALT         : my_event.data.key.keycode = Scancode::Alt       ; break;
+							case SDL_SCANCODE_RALT         : my_event.data.key.keycode = Scancode::Altgr     ; break;
+							case SDL_SCANCODE_KP_ENTER     : my_event.data.key.keycode = Scancode::Enter     ; break;
+							case SDL_SCANCODE_RETURN       : my_event.data.key.keycode = Scancode::Enter     ; break;
+							case SDL_SCANCODE_ESCAPE       : my_event.data.key.keycode = Scancode::Esc       ; break;
+							case SDL_SCANCODE_F1           : my_event.data.key.keycode = Scancode::F1        ; break;
+							case SDL_SCANCODE_F2           : my_event.data.key.keycode = Scancode::F2        ; break;
+							case SDL_SCANCODE_BACKSPACE    : my_event.data.key.keycode = Scancode::Backspace ; break;
+							case SDL_SCANCODE_KP_BACKSPACE : my_event.data.key.keycode = Scancode::Backspace ; break;
+							case SDL_SCANCODE_DELETE       : my_event.data.key.keycode = Scancode::Delete    ; break;
+
 								
 							default:
 								break;

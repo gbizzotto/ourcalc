@@ -845,7 +845,6 @@ struct OW
 		int text_y;	
 		unsigned int char_pos = 0;
 		unsigned int cursor_x = 0;
-		bool editing = false;
 	
 		TextEdit(Window * window, icu::UnicodeString t, Rect r = Rect{0,0,150,25})
 			: Widget(window, r)
@@ -948,20 +947,13 @@ struct OW
 				}
 				case key:
 				{
-					if (editing)
-						break;
 					if (ev.data.key.pressed)
-						event_key_down(ev.data.key.charcode);
+						event_key_down(ev.data.key.keycode);
 					break;
 				}
 				case text:
 				{
-					auto text = caption.text;
-					text.insert(char_pos, icu::UnicodeString::fromUTF8(ev.data.text.composition));
-					caption.set_text(text);
-					++char_pos;
-					cursor_x = text_x + caption.get_char_x(char_pos);
-					this->set_needs_redraw();
+					insert(icu::UnicodeString::fromUTF8(ev.data.text.composition));
 					break;
 				}
 				default:
@@ -970,63 +962,82 @@ struct OW
 			return false;
 		}
 
+		void clear()
+		{
+			set_text("");
+		}
+
+		int get_text_length() const
+		{
+			return caption.text.length();
+		}
+
+		void insert(icu::UnicodeString str)
+		{
+			auto text = caption.text;
+			text.insert(char_pos, str);
+			caption.set_text(text);
+			char_pos += str.length();
+			cursor_x = text_x + caption.get_char_x(char_pos);
+			this->set_needs_redraw();
+		}
+
+		void replace(int start, int length, icu::UnicodeString str)
+		{
+			assert(start >= 0);
+			assert(length >= 0);
+			assert(start+length <= get_text_length());
+
+			auto text = caption.text;
+			text.replace(start, length, str);
+			caption.set_text(text);
+			char_pos -= length;
+			char_pos += str.length();
+			cursor_x = text_x + caption.get_char_x(char_pos);
+			this->set_needs_redraw();
+		}
+
 		bool event_key_down(int key)
 		{
 			bool caption_changed = false;
 			bool cursor_changed = false;
 			auto str = caption.get_text();
-			if (key == '\b')
+			switch(key)
 			{
-				// backspace
-				if (char_pos == 0)
-					return true;
-				str.remove(char_pos-1, 1);
-				--char_pos;
-				caption_changed = true;
-				cursor_changed = true;
-			}
-			else if (key == 127)
-			{
-				// suppress
-				if (char_pos == (unsigned int) caption.text.length())
-					return true;
-				str.remove(char_pos, 1);
-				caption_changed = true;
-			}
-			else if (key == '\t')
-			{
-				// tab
-				return false;
-			}
-			else if (key == Scancode::Up)
-			{
-			}
-			else if (key == Scancode::Right)
-			{
-			}
-			else if (key == Scancode::Left)
-			{
-				if (char_pos == 0)
-					return true;
-				--char_pos;
-				cursor_changed = true;
-			}
-			else if (key == Scancode::Right)
-			{
-				if (char_pos == (unsigned int) caption.text.length())
-					return true;
-				++char_pos;
-				cursor_changed = true;
-			}
-			else
-			{
-				// printable char
-				/*
-				str.insert(char_pos, key);
-				++char_pos;
-				caption_changed = true;
-				cursor_changed = true;
-				*/
+				case Scancode::Backspace:
+					// backspace
+					if (char_pos == 0)
+						return true;
+					str.remove(char_pos-1, 1);
+					--char_pos;
+					caption_changed = true;
+					cursor_changed = true;
+					break;
+				case Scancode::Delete:
+					// suppress
+					if (char_pos == (unsigned int) caption.text.length())
+						return true;
+					str.remove(char_pos, 1);
+					caption_changed = true;
+					break;
+				case Scancode::Up:
+					break;
+				case Scancode::Down:
+					break;
+				case Scancode::Left:
+					if (char_pos == 0)
+						return true;
+					--char_pos;
+					cursor_changed = true;
+					break;
+				case Scancode::Right:
+					if (char_pos == (unsigned int) caption.text.length())
+						return true;
+					++char_pos;
+					cursor_changed = true;
+					break;
+				default:
+					break;
 			}
 
 			if (caption_changed)
