@@ -34,7 +34,6 @@ struct my_window : OurW::Window
 		this->top_container.add_widget(menubar);
 		this->top_container.add_widget(text1);
 		this->top_container.add_widget(grid1);
-		top_container.set_size({w, h});
 
 		auto & menu_file = menubar.add_submenu("Test1");
 		/*auto & menu_edit = */menubar.add("Test2", [](){});
@@ -44,6 +43,8 @@ struct my_window : OurW::Window
 		menu_file_open.add("bkjlkjblkjblkblkj", [&](){ });
 		menubar.vpack();
 
+		top_container.set_size({w, h});
+		
 		this->container.add_widget(top_container);
 
 		grid1.take_focus();

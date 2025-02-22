@@ -882,11 +882,11 @@ struct OW
 		}
 		virtual int width_packed() override
 		{
-			return 2*(this->border_width + this->border_padding) + caption.w;
+			return std::max(150, 2*(this->border_width + this->border_padding) + caption.w);
 		}
 		virtual int height_packed() override
 		{
-			return 2*(this->border_width + this->border_padding) + caption.h;
+			return std::max(25, 2*(this->border_width + this->border_padding) + caption.h);
 		}
 		virtual void _redraw() override
 		{
