@@ -2,6 +2,8 @@
 from copy import deepcopy
 from datetime import *
 import operator
+import datetime
+import dateparser
 
 class ourcell:
     """As per https://stackoverflow.com/a/68932800/231306"""
@@ -180,6 +182,34 @@ def make_ourcell(val,col,row): #will work for any object you feed it, but only t
 
 def is_ourcell(c):
     return isinstance(c, ourcell)
+
+
+def try_parse_text(raw_text):
+    print("parsing", raw_text)
+    try:
+        return int(raw_text)
+    except:
+        pass
+    print("not an int")
+    try:
+        return float(raw_text)
+    except:
+        pass
+    print("not a float")
+    try:
+        x = dateparser.parse(raw_text)
+        print(x)
+        if x is None:
+            raise
+        if x.time() == datetime.time(0, 0, 0, 0):
+            print("only date")
+            return x.date()
+        return x
+    except:
+        pass
+    print("not a datetime")
+
+    return str(raw_text)
 
 
 def TODAY():

@@ -1265,7 +1265,7 @@ ourcalc_variables = ','.join(var_set)
 icu::UnicodeString get_string_python_code(icu::UnicodeString & formula, int col, int row)
 {
 	icu::UnicodeString code = R"(
-result = '''_formula_'''
+result = try_parse_text('''_formula_''')
 _colname__row_ = make_ourcell(result, _col_, _row_)
 
 ourcalc_display_text = str(result)
