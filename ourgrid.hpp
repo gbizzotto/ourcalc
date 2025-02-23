@@ -25,6 +25,9 @@ PYBIND11_MODULE(example, m) {
 
 std::string column_name_from_int(int c);
 
+std::string        get_cell_name_string(unsigned col_idx, unsigned row_idx);
+icu::UnicodeString get_cell_name_utf8  (unsigned col_idx, unsigned row_idx);
+
 struct CellData
 {
 	icu::UnicodeString formula;
@@ -133,17 +136,17 @@ struct Grid : T::Widget
 	{
 		try
 		{
-			//std::cout << "Running:" << std::endl
-			//          << code << std::endl;
+			std::cout << "Running:" << std::endl
+			          << code << std::endl;
 			py::exec(code, globals, locals);
 		}
 		catch(std::exception & e)
 		{
-			std::cout << e.what() << std::endl;
+			std::cout << e.what() << " " << __FILE__ << ": " << __LINE__ << std::endl;
 		}
 		catch(...)
 		{
-			std::cout << "Unknown exception" << std::endl;
+			std::cout << "Unknown exception" << " " << __FILE__ << ": " << __LINE__ << std::endl;
 		}
 	}
 
@@ -172,6 +175,34 @@ struct Grid : T::Widget
 		return true;
 	}
 
+	std::string get_cell_defining_code(unsigned int col_idx, unsigned int row_idx) const
+	{
+		const auto cell_name = get_cell_name_string(col_idx,row_idx);
+		const auto col_str = column_name_from_int(col_idx);
+		const auto col_int = std::to_string(col_idx);
+		const auto row_str = std::to_string(row_idx);
+		return std::string(cell_name)
+			.append("=make_ourcell(None,")
+			.append(col_int).append(",").append(row_str)
+			.append(",False,False)\n")
+
+			.append("_").append(cell_name)
+			.append("=make_ourcell(").append(cell_name)
+			.append(",").append(col_int).append(",").append(row_str)
+			.append(",True,False)\n")
+
+			.append(col_str).append("_").append(row_str)
+			.append("=make_ourcell(").append(cell_name)
+			.append(",").append(col_int).append(",").append(row_str)
+			.append(",False,True)\n")
+
+			.append("_").append(col_str).append("_").append(row_str)
+			.append("=make_ourcell(").append(cell_name)
+			.append(",").append(col_int).append(",").append(row_str)
+			.append(",True,True)\n")
+			;
+	}
+
 	void insert_columns(unsigned int count, unsigned int before_idx)
 	{
 		assert(has_integrity());
@@ -186,13 +217,7 @@ struct Grid : T::Widget
 			row.insert(std::next(std::begin(row), before_idx), count, {"", "", Text(parent_window)});
 
 			for (unsigned int col_number=before_idx,i=0 ; i<count ; ++i,++col_number)
-				code.append(column_name_from_int(col_number))
-				    .append(std::to_string(row_number))
-				    .append("=make_ourcell(None,")
-				    .append(std::to_string(col_number))
-				    .append(",")
-				    .append(std::to_string(row_number))
-				    .append(")\n");
+				code.append(get_cell_defining_code(col_number, row_number));
 			++row_number;
 		}
 		thickness_cols.insert(std::next(std::begin(thickness_cols), before_idx), count, 50);
@@ -212,16 +237,8 @@ struct Grid : T::Widget
 
 		std::string code;
 		for (unsigned col_number=0 ; col_number < thickness_cols.size() ; ++col_number)
-		{
 			for (unsigned int row_number=before_idx,i=0 ; i<count ; ++i,++row_number)
-				code.append(column_name_from_int(col_number))
-				    .append(std::to_string(row_number))
-				    .append("=make_ourcell(None,")
-				    .append(std::to_string(col_number))
-				    .append(",")
-				    .append(std::to_string(row_number))
-				    .append(")\n");
-		}
+				code.append(get_cell_defining_code(col_number, row_number));
 
 		cell_data.insert(std::next(std::begin(cell_data), before_idx), count, std::vector<CellData>(count, {"", "", Text(parent_window)}));
 		thickness_rows.insert(std::next(std::begin(thickness_rows), before_idx), count, 18);
@@ -705,15 +722,10 @@ struct Grid : T::Widget
 		return thickness_rows.size();
 	}
 
-	icu::UnicodeString get_cell_name(unsigned col_idx, unsigned row_idx)
-	{
-		return icu::UnicodeString::fromUTF8(column_name_from_int(col_idx).append(std::to_string(row_idx)));
-	}
-
 	void insert_or_replace_cell_name(unsigned col_idx, unsigned row_idx)
 	{
 		// TODO: use selection instead?
-		auto cell_name = get_cell_name(col_idx, row_idx);
+		auto cell_name = get_cell_name_utf8(col_idx, row_idx);
 		if (insert_or_replace_cell_name_idx == -1)
 		{
 			// insert
@@ -1201,12 +1213,26 @@ std::tuple<unsigned int, unsigned int> parse_cell_name(const std::string & cell_
 {
 	unsigned int col, row;
 
-	auto i = 0;
+	int i = 0;
+	if (cell_name[i] == '_')
+		i = 1;
+	int start = i;
 	while (cell_name[i] >= 'A' && cell_name[i] <= 'Z')
 		++i;
-	col = parse_col_name(cell_name.substr(0, i));
+	col = parse_col_name(cell_name.substr(start, i));
+	if (cell_name[i] == '_')
+		++i;
 	row = std::stoi(cell_name.substr(i));
 	return {col, row};
+}
+
+std::string get_cell_name_string(unsigned col_idx, unsigned row_idx)
+{
+	return column_name_from_int(col_idx).append(std::to_string(row_idx));
+}
+icu::UnicodeString get_cell_name_utf8(unsigned col_idx, unsigned row_idx)
+{
+	return icu::UnicodeString::fromUTF8(get_cell_name_string(col_idx, row_idx));
 }
 
 std::string column_name_from_int(int c)
@@ -1229,7 +1255,7 @@ icu::UnicodeString get_formula_python_code(icu::UnicodeString & formula, int col
 {
 	icu::UnicodeString code = R"(
 result = _formula_
-_colname__row_ = make_ourcell(result, _col_, _row_)
+_colname__row_.set_val(result)
 
 ourcalc_display_text = str(result)
 ourcalc_display_type = result.__class__.__name__
@@ -1266,7 +1292,7 @@ icu::UnicodeString get_string_python_code(icu::UnicodeString & formula, int col,
 {
 	icu::UnicodeString code = R"(
 result = try_parse_text('''_formula_''')
-_colname__row_ = make_ourcell(result, _col_, _row_)
+_colname__row_.set_val(result, _col_, _row_)
 
 ourcalc_display_text = str(result)
 ourcalc_display_type = result.__class__.__name__
@@ -1340,13 +1366,14 @@ bool CellData::reevaluate(int col, int row)
 		}
 		catch(std::exception & e)
 		{
-			std::cout << e.what() << std::endl;
+			std::cout << e.what() << " " << __FILE__ << ": " << __LINE__ << std::endl;
 			error = true;
 			error_msg = e.what();
 			display_changed = !there_was_en_error;
 		}
 		catch(...)
 		{
+			std::cout << "unknown exception" << " " << __FILE__ << ": " << __LINE__ << std::endl;
 			error = true;
 			error_msg = "Unknown exception while evaluating expression.";
 			display_changed = !there_was_en_error;
@@ -1377,7 +1404,7 @@ bool CellData::reevaluate(int col, int row)
 		{
 			auto [ref_col, ref_row] = parse_cell_name(v);
 			auto * cell = global_grid->get_cell_at(ref_col, ref_row);
-			if (cell->error)
+			if (cell && cell->error)
 			{
 				error = true;
 				error_msg = v + std::string(" has an error.");
@@ -1426,13 +1453,14 @@ bool CellData::reevaluate(int col, int row)
 	}
 	catch(std::exception & e)
 	{
-		std::cout << e.what() << std::endl;
+		std::cout << e.what() << " " << __FILE__ << ": " << __LINE__ << std::endl;
 		error = true;
 		error_msg = e.what();
 		display_changed = !there_was_en_error;
 	}
 	catch(...)
 	{
+		std::cout << "unknown exception" << " " << __FILE__ << ": " << __LINE__ << std::endl;
 		error = true;
 		error_msg = "Unknown exception while evaluating expression.";
 		display_changed = !there_was_en_error;
