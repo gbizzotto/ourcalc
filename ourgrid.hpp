@@ -1258,7 +1258,7 @@ result = _formula_
 _colname__row_.set_val(result)
 
 ourcalc_display_text = str(result)
-ourcalc_display_type = result.__class__.__name__
+ourcalc_display_type = result.get_final_val().__class__.__name__ if is_ourcell(result) else result.__class__.__name__
 )";
 
 	code.findAndReplace("_col_", icu::UnicodeString::fromUTF8(std::to_string(col)));
@@ -1292,10 +1292,10 @@ icu::UnicodeString get_string_python_code(icu::UnicodeString & formula, int col,
 {
 	icu::UnicodeString code = R"(
 result = try_parse_text('''_formula_''')
-_colname__row_.set_val(result, _col_, _row_)
+_colname__row_.set_val(result)
 
 ourcalc_display_text = str(result)
-ourcalc_display_type = result.__class__.__name__
+ourcalc_display_type = result.get_final_val().__class__.__name__ if is_ourcell(result) else result.__class__.__name__
 ourcalc_variables = ""
 )";
 

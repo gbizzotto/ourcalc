@@ -4,6 +4,7 @@ from datetime import *
 import operator
 import datetime
 import dateparser
+import ast
 
 class ourcell:
     """As per https://stackoverflow.com/a/68932800/231306"""
@@ -200,11 +201,10 @@ def is_ourcell(c):
 
 
 def try_parse_text(raw_text):
-    for t in [bool, int, float, complex, list, tuple, set, dict]:
-        try:
-            return t(raw_text)
-        except:
-            continue
+    try:
+        return ast.literal_eval(raw_text)
+    except:
+        pass
     try:
         x = dateparser.parse(raw_text)
         if x is None:
