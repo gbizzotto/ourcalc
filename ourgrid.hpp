@@ -7,6 +7,8 @@
 
 #include <iostream>
 #include <vector>
+#include <set>
+#include <map>
 #include "our_windows.hpp"
 #include "sdl_wrapper.hpp"
 
@@ -28,6 +30,99 @@ std::string column_name_from_int(int c);
 std::string        get_cell_name_string(unsigned col_idx, unsigned row_idx);
 icu::UnicodeString get_cell_name_utf8  (unsigned col_idx, unsigned row_idx);
 
+
+struct CellCoords
+{
+	unsigned int x;
+	unsigned int y;
+};
+bool operator==(const CellCoords & left, const CellCoords & right)
+{
+	return left.x == right.x && left.y == right.y;
+}
+bool operator!=(const CellCoords & left, const CellCoords & right)
+{
+	return left.x != right.x || left.y != right.y;
+}
+bool operator<(const CellCoords & left, const CellCoords & right)
+{
+	return left.x < right.x || (left.x == right.x && left.y < right.y);
+}
+
+struct CellRect
+{
+	CellCoords upleft;
+	CellCoords downright;
+
+	CellRect(CellCoords a, CellCoords b)
+	{
+		if (a.x < b.x)
+		{
+			upleft.x = a.x;
+			downright.x = b.x;
+		}
+		else
+		{
+			upleft.x = b.x;
+			downright.x = a.x;
+		}
+		if (a.y < b.y)
+		{
+			upleft.y = a.y;
+			downright.y = b.y;
+		}
+		else
+		{
+			upleft.y = b.y;
+			downright.y = a.y;
+		}
+	}
+
+	bool contains(const CellCoords & r) const
+	{
+		return true
+		    && r.x >= upleft.x
+		    && r.x <= downright.x
+		    && r.y >= upleft.y
+		    && r.y <= downright.y
+		    ;
+	}
+};
+bool operator==(const CellRect & a, const CellRect & b)
+{
+	return a.upleft == b.upleft && a.downright == b.downright;
+}
+bool operator<(const CellRect & a, const CellRect & b)
+{
+	return a.upleft < b.upleft || (a.upleft == b.upleft && a.downright < b.downright);
+}
+
+struct SelRect : CellRect
+{
+	// is it selected or UNselected?
+	bool is_positive;
+
+	SelRect(const CellRect & r, bool b)
+		: CellRect(r)
+		, is_positive(b)
+	{}
+};
+
+class SelRects : public std::vector<SelRect>
+{
+public:
+	using vtype = std::vector<SelRect>;
+
+	auto find(CellRect r)
+	{
+		return std::find(this->begin(), this->end(), r);
+	}
+	auto push_front(SelRect && r)
+	{
+		return this->insert(this->begin(), r);
+	}
+};
+
 struct CellData
 {
 	icu::UnicodeString formula;
@@ -36,8 +131,8 @@ struct CellData
 	bool error = false;
 	horizontal_policy h_policy = horizontal_policy{horizontal_policy::alignment_t::none, horizontal_policy::sizing_t::none};
 	std::string error_msg = std::string("");
-	std::set<std::pair<unsigned int,unsigned int>> dependencies = std::set<std::pair<unsigned int,unsigned int>>();
-	std::vector<std::pair<unsigned int, unsigned int>> dependent_cells = {};
+	std::set<CellCoords> dependencies = std::set<CellCoords>();
+	std::vector<CellCoords> dependent_cells = {};
 
 	bool do_dependencies_depend_on_us(decltype(dependencies) deps, unsigned int col, unsigned int row);
 	void clear_dependencies(unsigned int col, unsigned int row);
@@ -45,14 +140,14 @@ struct CellData
 	bool set_formula(icu::UnicodeString contents, int col, int row);
 	void add_dependent(unsigned int col, unsigned int row)
 	{
-		auto p = std::make_pair(col, row);
+		auto p = CellCoords{col, row};
 		auto it = std::lower_bound(std::begin(dependent_cells), std::end(dependent_cells), p);
 		if (it == std::end(dependent_cells) || *it != p)
 			dependent_cells.insert(it, p);
 	}
 	void remove_dependent(unsigned int col, unsigned int row)
 	{
-		auto p = std::make_pair(col, row);
+		auto p = CellCoords{col, row};
 		auto it = std::lower_bound(std::begin(dependent_cells), std::end(dependent_cells), p);
 		if (it != std::end(dependent_cells) && *it == p)
 			dependent_cells.erase(it);
@@ -67,10 +162,261 @@ struct Grid : T::Widget
 	inline static const color_t color_text_header             = color_t(32);
 	inline static const color_t color_lines                   = color_t(160);
 	inline static const color_t color_bg_header               = color_t(210);
-	inline static const color_t selected_cells_overlay        = color_t(128,200,128,96);
+	inline static const color_t   selected_cells_overlay      = color_t(128,200,128,96);
+	inline static const color_t unselected_cells_overlay      = color_t(200,200, 64,96);
 	inline static const color_t color_active_cell             = color_t(0);
 	inline static const color_t color_edit_mode_selected_cell = color_t(64,192,64,255);
 	inline static const int header_resizing_area_thickness = 2;
+
+	struct selection_t
+	{
+		std::set<unsigned int >    selected_cols ;
+		std::set<unsigned int >    selected_rows ;
+		std::set<unsigned int >  unselected_cols ;
+		std::set<unsigned int >  unselected_rows ;
+		std::set<CellCoords   >    selected_cells;
+		std::set<CellCoords   >  unselected_cells;
+		SelRects                            rects;
+		bool selected_all = false;
+		bool cut; // copied if false
+		CellCoords reference_cell; // active_cell at the moment of copying
+
+		void clear()
+		{
+			  selected_cols .clear();
+			  selected_rows .clear();
+			unselected_cols .clear();
+			unselected_rows .clear();
+			  selected_cells.clear();
+			unselected_cells.clear();
+			           rects.clear();
+			selected_all = false;
+			cut = false;
+		}
+		bool empty() const
+		{
+			return !selected_all
+			    && selected_cols.empty()
+			    && selected_rows.empty()
+			    &&         rects.empty()
+			    ;
+		}
+
+		bool is_trivial() const
+		{
+			if (selected_cells.size() == 1
+				&& selected_cols.empty()
+				&& selected_rows.empty()
+				&&         rects.empty())
+				return true;
+
+			if (rects.size() == 1
+				&&   selected_cells.empty()
+				&&   selected_cols .empty()
+				&&   selected_rows .empty())
+				return true;
+		}
+
+		void add_rect(CellCoords old_coords, CellCoords new_coords)
+		{
+			CellRect r(old_coords, new_coords);
+			auto it = rects.find(r);
+			if (it != rects.end())
+			{	
+				if ( ! it->is_positive)
+					rects.erase(it);
+			}
+			else
+				rects.push_front({r, true});
+		}
+		void sub_rect(CellCoords old_coords, CellCoords new_coords)
+		{
+			CellRect r(old_coords, new_coords);
+			auto it = rects.find(r);
+			if (it != rects.end())
+			{
+				if (it->is_positive)
+					rects.erase(it);
+			}
+			else
+				rects.push_front({r, false});
+		}
+
+		bool does_col_have_selection(unsigned int idx) const
+		{
+			if (selected_all && ! unselected_cols.contains(idx))
+				return true;
+			for (auto n : selected_cols)
+				if (idx == n)
+					return true;
+			for (auto p : selected_cells)
+				if (idx == p.x)
+					return true;
+			return false;
+		}
+		bool does_row_have_selection(unsigned int idx) const
+		{
+			if (selected_all && ! unselected_rows.contains(idx))
+				return true;
+			for (auto n : selected_rows)
+				if (idx == n)
+					return true;
+			for (auto p : selected_cells)
+				if (idx == p.y)
+					return true;
+			return false;
+		}
+
+		bool is_cell_selected(unsigned int col_idx, unsigned int row_idx) const
+		{
+			auto p = CellCoords{col_idx, row_idx};
+			if (selected_cells.contains(p))
+				return true;
+			if (unselected_cells.contains(p))
+				return false;
+			for (const auto & rect : rects)
+				if (rect.contains(p))
+					return rect.is_positive;
+			if (selected_all)
+			{
+				if (unselected_rows.contains(row_idx) || unselected_cols.contains(col_idx))
+					return false;
+				return true;
+			}
+			return (selected_rows.contains(row_idx) || selected_cols.contains(col_idx));
+		}
+		bool is_cell_unselected(unsigned int col_idx, unsigned int row_idx) const
+		{
+			auto p = CellCoords{col_idx, row_idx};
+			if (unselected_cells.contains(p))
+				return true;
+			if (selected_cells.contains(p))
+				return false;
+			for (const auto & rect : rects)
+				if (rect.contains(p))
+					return rect.is_positive == false;
+			if (selected_all)
+			{
+				if (selected_rows.contains(row_idx) || selected_cols.contains(col_idx))
+					return true;
+				return false;
+			}
+			return (unselected_rows.contains(row_idx) || unselected_cols.contains(col_idx));
+		}
+
+		/*
+		bool is_cell_inside_selection(unsigned int col_idx, unsigned int row_idx) const
+		{
+			// check cols and rows
+			for (auto n : selected_cols)
+				if (col_idx == n)
+					return true;
+			for (auto n : selected_rows)
+				if (row_idx == n)
+					return true;
+
+			auto p = CellCoords{col_idx, row_idx};
+
+			// check rects
+			for (auto & r : selected_rects)
+				if (r.contains(p))
+					return true;
+
+			return false;
+		}
+		*/
+
+		// return true if the row was unselected
+		bool toggle_unselected_row(unsigned int row_idx)
+		{
+			bool was_unselected = 0 < unselected_rows.erase(row_idx);
+			if ( ! was_unselected)
+				unselected_rows.insert(row_idx);
+			return was_unselected;
+		}
+		// return true if the row was selected
+		bool toggle_selected_row(unsigned int row_idx)
+		{
+			bool was_selected = 0 < selected_rows.erase(row_idx);
+			if ( ! was_selected)
+				selected_rows.insert(row_idx);
+			return was_selected;
+		}
+		// return true if the col was unselected
+		bool toggle_unselected_col(unsigned int col_idx)
+		{
+			bool was_unselected = 0 < unselected_cols.erase(col_idx);
+			if ( ! was_unselected)
+				unselected_cols.insert(col_idx);
+			return was_unselected;
+		}
+		// return true if the col was selected
+		bool toggle_selected_col(unsigned int col_idx)
+		{
+			bool was_selected = 0 < selected_cols.erase(col_idx);
+			if ( ! was_selected)
+				selected_cols.insert(col_idx);
+			return was_selected;
+		}
+
+		void clear_selected_cells_in_row(  unsigned int row_idx)
+		{
+			std::erase_if(selected_cells, [&](const auto & p){ return p.y == row_idx; });
+		}
+		void clear_selected_cells_in_col(  unsigned int col_idx)
+		{
+			std::erase_if(selected_cells, [&](const auto & p){ return p.x == col_idx; });
+		}
+		void clear_unselected_cells_in_row(unsigned int row_idx)
+		{
+			std::erase_if(unselected_cells, [&](const auto & p){ return p.y == row_idx && ! selected_cols.contains(p.x); });
+		}
+		void clear_unselected_cells_in_col(unsigned int col_idx)
+		{
+			std::erase_if(unselected_cells, [&](const auto & p){ return p.x == col_idx && ! selected_rows.contains(p.y); });
+		}
+		bool is_col_selected  (unsigned int col_idx) { return selected_cols  .contains(col_idx); }
+		bool is_row_selected  (unsigned int row_idx) { return selected_rows  .contains(row_idx); }
+		bool is_col_unselected(unsigned int col_idx) { return unselected_cols.contains(col_idx); }
+		bool is_row_unselected(unsigned int row_idx) { return unselected_rows.contains(row_idx); }
+
+		void toggle_selected_cell(unsigned int col_idx, unsigned int row_idx)
+		{
+			auto p = CellCoords{col_idx, row_idx};
+
+			// search individual cells
+			if (selected_cells.erase(p))
+				return;
+			if (unselected_cells.erase(p))
+				return;
+
+			// search rects
+			for (auto & r : rects)
+				if (r.contains(p))
+				{
+					if (r.is_positive)
+						unselected_cells.insert(p);
+					else
+						selected_cells.insert(p);
+					return;
+				}
+
+			// search cols and rows
+			if (is_col_selected(col_idx) || is_row_selected(row_idx))
+			{
+				unselected_cells.insert(p);
+				return;
+			}
+			if (is_col_unselected(col_idx) || is_row_unselected(row_idx))
+			{
+				selected_cells.insert(p);
+				return;
+			}
+
+			// nothing particular
+			selected_cells.insert(p);
+		}
+	};
 
 	// basics
 	Window * parent_window;
@@ -89,22 +435,18 @@ struct Grid : T::Widget
 	std::deque<Text> header_captions_rows;
 
 	// selection stuff
-	std::set<unsigned int>                           selected_cols;
-	std::set<unsigned int>                           selected_rows;
-	std::set<unsigned int>                         unselected_cols;
-	std::set<unsigned int>                         unselected_rows;
-	std::set<std::pair<unsigned int,unsigned int>>   selected_cells;
-	std::set<std::pair<unsigned int,unsigned int>> unselected_cells;
-	bool selected_all = false;		
+	selection_t selection;
+	selection_t copied_or_cut;
 
 	// grid status
 	bool key_ctrl = false;
+	bool key_shift = false;
 	bool edit_mode = false;
 	bool edit_mode_select_cell = false;
 	int insert_or_replace_cell_name_idx = -1;
 	int insert_or_replace_cell_name_len = 0;
-	std::pair<unsigned int, unsigned int> active_cell;
-	std::pair<unsigned int, unsigned int> edit_mode_selected_cell;
+	CellCoords active_cell;
+	CellCoords edit_mode_selected_cell;
 
 	// python interpreter
 	py::scoped_interpreter guard;
@@ -136,8 +478,8 @@ struct Grid : T::Widget
 	{
 		try
 		{
-			std::cout << "Running:" << std::endl
-			          << code << std::endl;
+			//std::cout << "Running:" << std::endl
+			//          << code << std::endl;
 			py::exec(code, globals, locals);
 		}
 		catch(std::exception & e)
@@ -161,16 +503,16 @@ struct Grid : T::Widget
 		// row count
 		assert(row_count == cell_data.size());
 		assert(row_count == thickness_rows.size());
-		assert(row_count >= selected_rows.size());
+		assert(row_count >= selection.selected_rows.size());
 
 		// column count
 		for (auto & row : cell_data)
 			assert(row.size() == col_count);
 		assert(col_count == thickness_cols.size());
-		assert(col_count >=  selected_cols.size());
+		assert(col_count >= selection.selected_cols.size());
 
 		// selection
-		assert (selected_cells.size() <= col_count * row_count);
+		assert (selection.selected_cells.size() <= col_count * row_count);
 
 		return true;
 	}
@@ -265,31 +607,6 @@ struct Grid : T::Widget
 		return total;
 	}
 
-	bool does_col_have_selection(unsigned int idx) const
-	{
-		if (selected_all && ! unselected_cols.contains(idx))
-			return true;
-		for (auto n : selected_cols)
-			if (idx == n)
-				return true;
-		for (auto p : selected_cells)
-			if (idx == p.first)
-				return true;
-		return false;
-	}
-	bool does_row_have_selection(unsigned int idx) const
-	{
-		if (selected_all && ! unselected_rows.contains(idx))
-			return true;
-		for (auto n : selected_rows)
-			if (idx == n)
-				return true;
-		for (auto p : selected_cells)
-			if (idx == p.second)
-				return true;
-		return false;
-	}
-
 	virtual void _redraw() override
 	{
 		this->clear_background();
@@ -306,8 +623,8 @@ struct Grid : T::Widget
 
 			// dark rectangle
 			this->drawable_area.fill_rect(x, 0, thickness-1, header_cols_height-1, color_bg_header.r, color_bg_header.g, color_bg_header.b);
-			bool col_has_selected_cells = does_col_have_selection(i);
-			if (col_has_selected_cells || (!col_has_selected_cells && active_cell.first == i))
+			bool col_has_selected_cells = selection.does_col_have_selection(i);
+			if (col_has_selected_cells || (!col_has_selected_cells && active_cell.x == i))
 				this->drawable_area.fill_rect(x, 0, thickness-1, header_cols_height-1, selected_cells_overlay.r, selected_cells_overlay.g, selected_cells_overlay.b, selected_cells_overlay.a);
 
 			this->drawable_area.copy_from_text_to_rect_center(header_captions_cols[i], x, 0, thickness, header_cols_height);
@@ -328,8 +645,8 @@ struct Grid : T::Widget
 
 			// dark rectangle
 			this->drawable_area.fill_rect(0, y, header_rows_width-1, thickness-1, color_bg_header.r, color_bg_header.g, color_bg_header.b);
-			bool row_has_selected_cells = does_row_have_selection(i);
-			if (row_has_selected_cells || (!row_has_selected_cells && active_cell.second == i))
+			bool row_has_selected_cells = selection.does_row_have_selection(i);
+			if (row_has_selected_cells || (!row_has_selected_cells && active_cell.y == i))
 				this->drawable_area.fill_rect(0, y, header_rows_width-1, thickness-1, selected_cells_overlay.r, selected_cells_overlay.g, selected_cells_overlay.b, selected_cells_overlay.a);
 
 			this->drawable_area.copy_from_text_to_rect_center(header_captions_rows[i], 0, y, header_rows_width, thickness);
@@ -368,12 +685,12 @@ struct Grid : T::Widget
 						this->drawable_area.copy_from_text_to_rect_right(cell_data[row_idx][col_idx].display, x, y, thickness_col-1, thickness_row-1);
 				}
 
-				if (active_cell.first == col_idx && active_cell.second == row_idx)
+				if (active_cell.x == col_idx && active_cell.y == row_idx)
 				{
 					this->drawable_area.draw_rect(x, y, thickness_col-1, thickness_row-1, color_active_cell.r, color_active_cell.g, color_active_cell.b, color_active_cell.a);
 					//this->drawable_area.draw_rect(x-1, y-1, thickness_col+1, thickness_row+1, color_active_cell.r, color_active_cell.g, color_active_cell.b, color_active_cell.a);
 				}
-				else if (edit_mode && edit_mode_select_cell && edit_mode_selected_cell.first == col_idx && edit_mode_selected_cell.second == row_idx)
+				else if (edit_mode && edit_mode_select_cell && edit_mode_selected_cell.x == col_idx && edit_mode_selected_cell.y == row_idx)
 				{
 					this->drawable_area.draw_rect(x, y, thickness_col-1, thickness_row-1, color_active_cell.r, color_edit_mode_selected_cell.g, color_edit_mode_selected_cell.b, color_edit_mode_selected_cell.a);
 				}
@@ -394,29 +711,12 @@ struct Grid : T::Widget
 
 	color_t get_cell_color_bg(unsigned int col_idx, unsigned int row_idx)
 	{
-		if (is_cell_selected(col_idx, row_idx))
+		if (selection.is_cell_selected(col_idx, row_idx))
 			return selected_cells_overlay;
+		else if (selection.is_cell_unselected(col_idx, row_idx))
+			return unselected_cells_overlay;
 		else
 			return color_cell_bg;
-	}
-
-	bool is_cell_selected(unsigned int col_idx, unsigned int row_idx)
-	{
-		auto p = std::make_pair(col_idx, row_idx);
-		if (selected_cells.contains(p))
-			return true;
-		if (unselected_cells.contains(p))
-			return false;
-		if (selected_all)
-		{
-			if (unselected_rows.contains(row_idx) || unselected_cols.contains(col_idx))
-				return false;
-			return true;
-		}
-		else
-		{
-			return (selected_rows.contains(row_idx) || selected_cols.contains(col_idx));
-		}
 	}
 
 	// returns -1 for header
@@ -508,115 +808,6 @@ struct Grid : T::Widget
 		return horizontal_policy::alignment_t::center;
 	}
 
-	void clear_selection()
-	{
-		  selected_cols.clear();
-		  selected_rows.clear();
-		unselected_cols.clear();
-		unselected_rows.clear();
-		  selected_cells.clear();
-		unselected_cells.clear();
-		selected_all = false;
-	}
-
-	// return true if the row was unselected
-	bool toggle_unselected_row(unsigned int row_idx)
-	{
-		bool was_unselected = 0 < unselected_rows.erase(row_idx);
-		if ( ! was_unselected)
-			unselected_rows.insert(row_idx);
-		return was_unselected;
-	}
-	// return true if the row was selected
-	bool toggle_selected_row(unsigned int row_idx)
-	{
-		bool was_selected = 0 < selected_rows.erase(row_idx);
-		if ( ! was_selected)
-			selected_rows.insert(row_idx);
-		return was_selected;
-	}
-	// return true if the col was unselected
-	bool toggle_unselected_col(unsigned int col_idx)
-	{
-		bool was_unselected = 0 < unselected_cols.erase(col_idx);
-		if ( ! was_unselected)
-			unselected_cols.insert(col_idx);
-		return was_unselected;
-	}
-	// return true if the col was selected
-	bool toggle_selected_col(unsigned int col_idx)
-	{
-		bool was_selected = 0 < selected_cols.erase(col_idx);
-		if ( ! was_selected)
-			selected_cols.insert(col_idx);
-		return was_selected;
-	}
-
-	void clear_selected_cells_in_row(  unsigned int row_idx)
-	{
-		std::erase_if(selected_cells, [&](const auto & p){ return p.second == row_idx; });
-	}
-	void clear_selected_cells_in_col(  unsigned int col_idx)
-	{
-		std::erase_if(selected_cells, [&](const auto & p){ return p.first == col_idx; });
-	}
-	void clear_unselected_cells_in_row(unsigned int row_idx)
-	{
-		std::erase_if(unselected_cells, [&](const auto & p){ return p.second == row_idx && ! selected_cols.contains(p.first); });
-	}
-	void clear_unselected_cells_in_col(unsigned int col_idx)
-	{
-		std::erase_if(unselected_cells, [&](const auto & p){ return p.first == col_idx && ! selected_rows.contains(p.second); });
-	}
-	bool is_col_selected  (unsigned int col_idx) { return selected_cols  .contains(col_idx); }
-	bool is_row_selected  (unsigned int row_idx) { return selected_rows  .contains(row_idx); }
-	bool is_col_unselected(unsigned int col_idx) { return unselected_cols.contains(col_idx); }
-	bool is_row_unselected(unsigned int row_idx) { return unselected_rows.contains(row_idx); }
-
-	void toggle_selected_cell(unsigned int col_idx, unsigned int row_idx)
-	{
-		auto p = std::make_pair(col_idx, row_idx);
-		bool col_is_selected = is_col_selected(col_idx);
-		bool row_is_selected = is_row_selected(row_idx);
-		bool col_is_unselected = is_col_unselected(col_idx);
-		bool row_is_unselected = is_row_unselected(row_idx);
-
-		if (selected_all)
-		{
-			if ( ! col_is_unselected && ! row_is_unselected)
-			{
-				if (0 == unselected_cells.erase(p))
-				{
-					unselected_cells.insert(p);
-				}
-			}
-			else
-			{
-				if (0 == selected_cells.erase(p))
-				{
-					selected_cells.insert(p);
-				}
-			}
-		}
-		else
-		{
-			if (col_is_selected || row_is_selected)
-			{
-				if (0 == unselected_cells.erase(p))
-				{
-					unselected_cells.insert(p);
-				}
-			}
-			else
-			{
-				if (0 == selected_cells.erase(p))
-				{
-					selected_cells.insert(p);
-				}
-			}
-		}
-	}
-
 	// returns -2 if none, -1 if header, idx otherwise
 	int is_mouse_on_row_header_edge(int mouse_x, int mouse_y)
 	{
@@ -696,21 +887,14 @@ struct Grid : T::Widget
 
 	void set_active_cell(unsigned int col_idx, unsigned int row_idx)
 	{
-		set_formula_at(active_cell.first, active_cell.second, editor.get_text());
+		set_formula_at(active_cell.x, active_cell.y, editor.get_text());
 
-		auto p = std::make_pair(col_idx, row_idx);
+		auto p = CellCoords{col_idx, row_idx};
 		if (active_cell != p)
 		{
 			editor.set_text(get_formula_at(col_idx, row_idx));
 			active_cell = p;
 		}
-	}
-
-	bool has_no_selection() const
-	{
-		return selected_cols.size() == 0
-		    && selected_rows.size() == 0
-		    && selected_cells.size() == 0;
 	}
 
 	unsigned int get_col_count() const
@@ -738,6 +922,35 @@ struct Grid : T::Widget
 			assert(editor.get_text_length() >= insert_or_replace_cell_name_idx);
 			editor.replace(insert_or_replace_cell_name_idx, insert_or_replace_cell_name_len, cell_name);
 			insert_or_replace_cell_name_len = cell_name.length();
+		}
+	}
+
+	icu::UnicodeString translate_formula(const icu::UnicodeString & formula, unsigned int offset_x, unsigned int offset_y)
+	{
+		return formula;
+	}
+
+	void paste(const selection_t & sel, unsigned int new_x, unsigned int new_y)
+	{
+		int offset_x = new_x - sel.reference_cell.x;
+		int offset_y = new_y - sel.reference_cell.y;
+
+		for (const auto & p : sel.selected_cells)
+		{
+			CellData * cell_data = get_cell_at(p.x, p.y);
+			assert(cell_data);
+			if ( ! cell_data)
+				continue;
+			if (p.x+offset_x < 0)
+				// TODO: error message
+				continue;
+			if (p.y+offset_y < 0)
+				// TODO: error message
+				continue;
+			auto new_formula = translate_formula(cell_data->formula, offset_x, offset_y);
+			set_formula_at(p.x+offset_x, p.y+offset_y, new_formula);
+			if (p == sel.reference_cell)
+				editor.set_text(new_formula);
 		}
 	}
 
@@ -774,8 +987,8 @@ struct Grid : T::Widget
 				if (edit_mode)
 				{
 					edit_mode_select_cell = true;
-					edit_mode_selected_cell.first = col_idx;
-					edit_mode_selected_cell.second = row_idx;
+					edit_mode_selected_cell.x = col_idx;
+					edit_mode_selected_cell.y = row_idx;
 					insert_or_replace_cell_name(col_idx, row_idx);
 					this->set_needs_redraw();
 					break;
@@ -894,89 +1107,101 @@ struct Grid : T::Widget
 				bool changed = false;
 				if ( ! key_ctrl)
 				{
-					clear_selection();
-					if (col_idx == -1 && row_idx == -1)
-					{
-						changed |= ! selected_all;
-						selected_all = true;
-					}
-					else if (col_idx == -1)
-					{
-						if ( ! is_row_selected(row_idx))
-						{
-							changed |= true;
-							selected_rows.insert(row_idx);
-							clear_unselected_cells_in_row(row_idx);
-						}
-					}
-					else if (row_idx == -1)
-					{
-						if ( ! is_col_selected(col_idx))
-						{
-							changed |= true;
-							selected_cols.insert(col_idx);
-							clear_unselected_cells_in_col(col_idx);
-						}
-					}
+					// if ctrl, keep previous selection, wipe otherwise
+					selection.clear();
 				}
-				else
+				if (key_shift)
+				{
+					if (selection.empty() || selection.is_cell_selected(old_active_cell.x, old_active_cell.y))
+						selection.add_rect(old_active_cell, active_cell);
+					else
+						selection.sub_rect(old_active_cell, active_cell);
+					active_cell = old_active_cell;
+				}
+				else if (key_ctrl)
 				{
 					// ctrl is held down
 
 					if (col_idx == -1 && row_idx == -1)
 					{
-						clear_selection();
-						changed |= ! selected_all;
-						selected_all = true;
+						selection.clear();
+						changed |= ! selection.selected_all;
+						selection.selected_all = true;
 					}
 					else if (col_idx == -1)
 					{
 						changed |= true;
-						if (selected_all)
+						if (selection.selected_all)
 						{
-							bool was_unselected = toggle_unselected_row((unsigned int)row_idx);
+							bool was_unselected = selection.toggle_unselected_row((unsigned int)row_idx);
 							if (was_unselected)
-								clear_selected_cells_in_row(row_idx);
+								selection.clear_selected_cells_in_row(row_idx);
 							else
-								clear_unselected_cells_in_row(row_idx);
+								selection.clear_unselected_cells_in_row(row_idx);
 						}
 						else
 						{
-							bool was_selected = toggle_selected_row((unsigned int)row_idx);
+							bool was_selected = selection.toggle_selected_row((unsigned int)row_idx);
 							if (was_selected)
-								clear_unselected_cells_in_row(row_idx);
+								selection.clear_unselected_cells_in_row(row_idx);
 							else
-								clear_selected_cells_in_row(row_idx);
+								selection.clear_selected_cells_in_row(row_idx);
 						}
 					}
 					else if (row_idx == -1)
 					{
 						changed |= true;
-						if (selected_all)
+						if (selection.selected_all)
 						{
-							bool was_unselected = toggle_unselected_col((unsigned int)col_idx);
+							bool was_unselected = selection.toggle_unselected_col((unsigned int)col_idx);
 							if (was_unselected)
-								clear_selected_cells_in_col(col_idx);
+								selection.clear_selected_cells_in_col(col_idx);
 							else
-								clear_unselected_cells_in_col(col_idx);
+								selection.clear_unselected_cells_in_col(col_idx);
 						}
 						else
 						{
-							bool was_selected = toggle_selected_col((unsigned int)col_idx);
+							bool was_selected = selection.toggle_selected_col((unsigned int)col_idx);
 							if (was_selected)
-								clear_unselected_cells_in_col(col_idx);
+								selection.clear_unselected_cells_in_col(col_idx);
 							else
-								clear_selected_cells_in_col(col_idx);
+								selection.clear_selected_cells_in_col(col_idx);
 						}
 					}
 					else
 					{
-						if (active_cell != old_active_cell && has_no_selection())
+						if (active_cell != old_active_cell && selection.empty())
 						{
-							toggle_selected_cell(old_active_cell.first, old_active_cell.second);
+							selection.toggle_selected_cell(old_active_cell.x, old_active_cell.y);
 						}
 						changed |= true;
-						toggle_selected_cell(col_idx, row_idx);
+						selection.toggle_selected_cell(col_idx, row_idx);
+					}
+				}
+				else
+				{
+					if (col_idx == -1 && row_idx == -1)
+					{
+						changed |= ! selection.selected_all;
+						selection.selected_all = true;
+					}
+					else if (col_idx == -1)
+					{
+						if ( ! selection.is_row_selected(row_idx))
+						{
+							changed |= true;
+							selection.selected_rows.insert(row_idx);
+							selection.clear_unselected_cells_in_row(row_idx);
+						}
+					}
+					else if (row_idx == -1)
+					{
+						if ( ! selection.is_col_selected(col_idx))
+						{
+							changed |= true;
+							selection.selected_cols.insert(col_idx);
+							selection.clear_unselected_cells_in_col(col_idx);
+						}
 					}
 				}
 				if (changed)
@@ -985,9 +1210,36 @@ struct Grid : T::Widget
 			}
 			case key:
 			{
+				if (ev.data.key.mod & key_data::Mods::LCTRL)
+				{
+					switch(ev.data.key.charcode)
+					{
+						case 'c':
+						case 'x':
+							copied_or_cut = selection;
+							copied_or_cut.reference_cell = active_cell;
+							copied_or_cut.cut = ev.data.key.charcode == 'x';
+							if (copied_or_cut.empty())
+								copied_or_cut.toggle_selected_cell(active_cell.x, active_cell.y);
+							break;
+						case 'v':
+							std::cout << "paste" << std::endl;
+							paste(copied_or_cut, active_cell.x, active_cell.y);
+							break;
+						default:
+							std::cout << "CTRL-" << ev.data.key.charcode << std::endl;
+							break;
+					}
+				}
+
 				if (ev.data.key.keycode == Scancode::Ctrl)
 				{
 					key_ctrl = ev.data.key.pressed;
+					break;
+				}
+				else if (ev.data.key.keycode == Scancode::Shift)
+				{
+					key_shift = ev.data.key.pressed;
 					break;
 				}
 				if ( ! ev.data.key.pressed)
@@ -1000,17 +1252,17 @@ struct Grid : T::Widget
 						{
 							changed |= !edit_mode_select_cell;
 							edit_mode_select_cell = true;
-							if (edit_mode_selected_cell.second != 0)
+							if (edit_mode_selected_cell.y != 0)
 							{
-								--edit_mode_selected_cell.second;
+								--edit_mode_selected_cell.y;
 								changed |= true;
 							}
-							insert_or_replace_cell_name(edit_mode_selected_cell.first, edit_mode_selected_cell.second);
+							insert_or_replace_cell_name(edit_mode_selected_cell.x, edit_mode_selected_cell.y);
 						}
 						else
 						{
-							if (active_cell.second != 0)
-								set_active_cell(active_cell.first, active_cell.second - 1);
+							if (active_cell.y != 0)
+								set_active_cell(active_cell.x, active_cell.y - 1);
 							changed |= true;
 						}
 						break;
@@ -1019,18 +1271,18 @@ struct Grid : T::Widget
 						{
 							changed |= !edit_mode_select_cell;
 							edit_mode_select_cell = true;
-							if (edit_mode_selected_cell.second < get_row_count()-1)
+							if (edit_mode_selected_cell.y < get_row_count()-1)
 							{
-								++edit_mode_selected_cell.second;
+								++edit_mode_selected_cell.y;
 								changed |= true;
 							}
-							insert_or_replace_cell_name(edit_mode_selected_cell.first, edit_mode_selected_cell.second);
+							insert_or_replace_cell_name(edit_mode_selected_cell.x, edit_mode_selected_cell.y);
 						}
 						else
 						{
-							if (active_cell.second < get_row_count()-1)
+							if (active_cell.y < get_row_count()-1)
 							{
-								set_active_cell(active_cell.first, active_cell.second + 1);
+								set_active_cell(active_cell.x, active_cell.y + 1);
 								changed |= true;
 							}
 						}
@@ -1040,17 +1292,17 @@ struct Grid : T::Widget
 						{
 							changed |= !edit_mode_select_cell;
 							edit_mode_select_cell = true;
-							if (edit_mode_selected_cell.first > 0)
+							if (edit_mode_selected_cell.x > 0)
 							{
-								--edit_mode_selected_cell.first;
+								--edit_mode_selected_cell.x;
 								changed |= true;
 							}
-							insert_or_replace_cell_name(edit_mode_selected_cell.first, edit_mode_selected_cell.second);
+							insert_or_replace_cell_name(edit_mode_selected_cell.x, edit_mode_selected_cell.y);
 						}
 						else
 						{
-							if (active_cell.first != 0)
-								set_active_cell(active_cell.first - 1, active_cell.second);
+							if (active_cell.x != 0)
+								set_active_cell(active_cell.x - 1, active_cell.y);
 							changed |= true;
 						}
 						break;
@@ -1059,17 +1311,17 @@ struct Grid : T::Widget
 						{
 							changed |= !edit_mode_select_cell;
 							edit_mode_select_cell = true;
-							if (edit_mode_selected_cell.first < get_row_count()-1)
+							if (edit_mode_selected_cell.x < get_row_count()-1)
 							{
-								++edit_mode_selected_cell.first;
+								++edit_mode_selected_cell.x;
 								changed |= true;
 							}
-							insert_or_replace_cell_name(edit_mode_selected_cell.first, edit_mode_selected_cell.second);
+							insert_or_replace_cell_name(edit_mode_selected_cell.x, edit_mode_selected_cell.y);
 						}
 						else
 						{
-							if (active_cell.first < get_col_count()-1)
-								set_active_cell(active_cell.first + 1, active_cell.second);
+							if (active_cell.x < get_col_count()-1)
+								set_active_cell(active_cell.x + 1, active_cell.y);
 							changed |= true;
 						}
 						break;
@@ -1078,7 +1330,7 @@ struct Grid : T::Widget
 						{
 							if (edit_mode_selected_cell != active_cell)
 							{
-								//editor.insert(get_cell_name(edit_mode_selected_cell.first, edit_mode_selected_cell.second));
+								//editor.insert(get_cell_name(edit_mode_selected_cell.x, edit_mode_selected_cell.y));
 								edit_mode_selected_cell = active_cell;
 								insert_or_replace_cell_name_idx = -1;
 								insert_or_replace_cell_name_len = -1;
@@ -1086,7 +1338,7 @@ struct Grid : T::Widget
 							}
 							else
 							{
-								set_active_cell(active_cell.first, active_cell.second + 1);
+								set_active_cell(active_cell.x, active_cell.y + 1);
 								changed |= true;
 								edit_mode_select_cell = false;
 								edit_mode = false;
@@ -1094,9 +1346,9 @@ struct Grid : T::Widget
 						}
 						else
 						{
-							if (active_cell.second < get_row_count()-1)
+							if (active_cell.y < get_row_count()-1)
 							{
-								set_active_cell(active_cell.first, active_cell.second + 1);
+								set_active_cell(active_cell.x, active_cell.y + 1);
 								changed |= true;
 							}
 						}
@@ -1121,7 +1373,7 @@ struct Grid : T::Widget
 						else
 						{
 							editor.clear();
-							set_formula_at(active_cell.first, active_cell.second, "");
+							set_formula_at(active_cell.x, active_cell.y, "");
 							changed |= true;
 						}
 						break;
@@ -1334,8 +1586,8 @@ bool CellData::set_formula(icu::UnicodeString contents, int col, int row)
 	// update dependent cells
 	for (const auto & p : dependent_cells)
 	{
-		auto * cell = global_grid->get_cell_at(p.first, p.second);
-		cell->reevaluate(p.first, p.second);
+		auto * cell = global_grid->get_cell_at(p.x, p.y);
+		cell->reevaluate(p.x, p.y);
 	}
 
 	return display_changed;
@@ -1419,7 +1671,7 @@ bool CellData::reevaluate(int col, int row)
 			auto * cell = global_grid->get_cell_at(ref_col, ref_row);
 			if ( ! cell)
 				continue;
-			dependencies.insert(std::make_pair(ref_col, ref_row));
+			dependencies.insert(CellCoords{ref_col, ref_row});
 			cell->add_dependent(col, row);
 		}
 
@@ -1472,7 +1724,7 @@ void CellData::clear_dependencies(unsigned int col, unsigned int row)
 {
 	for (auto & p : dependencies)
 	{
-		auto * cell = global_grid->get_cell_at(p.first, p.second);
+		auto * cell = global_grid->get_cell_at(p.x, p.y);
 		if ( ! cell)
 			continue;
 		cell->remove_dependent(col, row);
@@ -1482,17 +1734,17 @@ void CellData::clear_dependencies(unsigned int col, unsigned int row)
 
 bool CellData::do_dependencies_depend_on_us(decltype(dependencies) deps, unsigned int col, unsigned int row)
 {
-	auto this_pair = std::make_pair(col, row);
+	auto this_pair = CellCoords{col, row};
 	for (const auto & p : deps)
 		if (p == this_pair)
 			return true;
 	deps.insert(this_pair);
 	for (const auto & p : dependent_cells)
 	{
-		auto * cell = global_grid->get_cell_at(p.first, p.second);
+		auto * cell = global_grid->get_cell_at(p.x, p.y);
 		if ( ! cell)
 			continue;
-		if (cell->do_dependencies_depend_on_us(deps, p.first, p.second))
+		if (cell->do_dependencies_depend_on_us(deps, p.x, p.y))
 			return true;
 	}
 	return false;

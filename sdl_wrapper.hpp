@@ -696,6 +696,7 @@ struct SDL
 						my_event.data.key.pressed  = e.type == SDL_KEYDOWN;
 						my_event.data.key.released = e.type == SDL_KEYUP;
 						my_event.data.key.charcode = ev.keysym.sym;
+						my_event.data.key.mod      = ev.keysym.mod;
 						switch (ev.keysym.scancode)
 						{
 							case SDL_SCANCODE_UP           : my_event.data.key.keycode = Scancode::Up        ; break;
